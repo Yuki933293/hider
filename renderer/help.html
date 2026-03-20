@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>Hider 使用帮助</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: #f8f8fa;
+      color: #333;
+      line-height: 1.7;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .container {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 40px 32px 64px;
+    }
+
+    .app-header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+
+    .app-header h1 {
+      font-size: 22px;
+      font-weight: 700;
+      color: #111;
+      margin-bottom: 6px;
+    }
+
+    .app-header p {
+      font-size: 13px;
+      color: #999;
+    }
+
+    /* Sections */
+    .section {
+      margin-bottom: 32px;
+    }
+
+    .section-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #111;
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid #eee;
+    }
+
+    .section-title .pro-tag {
+      font-size: 10px;
+      font-weight: 600;
+      color: #3b82f6;
+      background: rgba(59, 130, 246, 0.1);
+      padding: 2px 8px;
+      border-radius: 4px;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+
+    /* Feature cards */
+    .feature {
+      background: #fff;
+      border: 1px solid #eee;
+      border-radius: 10px;
+      padding: 16px 18px;
+      margin-bottom: 12px;
+    }
+
+    .feature:last-child { margin-bottom: 0; }
+
+    .feature-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: #222;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .feature-name svg {
+      color: #3b82f6;
+      flex-shrink: 0;
+    }
+
+    .feature-subtitle {
+      font-size: 12px;
+      color: #999;
+      font-weight: 400;
+      margin-left: 4px;
+    }
+
+    .feature p {
+      font-size: 13px;
+      color: #555;
+      line-height: 1.75;
+      margin-bottom: 8px;
+    }
+
+    .feature p:last-child { margin-bottom: 0; }
+
+    .tip-box {
+      background: rgba(59, 130, 246, 0.06);
+      border-left: 3px solid #3b82f6;
+      border-radius: 0 6px 6px 0;
+      padding: 10px 14px;
+      margin-top: 10px;
+    }
+
+    .tip-box p {
+      font-size: 12px;
+      color: #3b82f6;
+      line-height: 1.65;
+    }
+
+    .warn-box {
+      background: rgba(245, 158, 11, 0.06);
+      border-left: 3px solid #f59e0b;
+      border-radius: 0 6px 6px 0;
+      padding: 10px 14px;
+      margin-top: 10px;
+    }
+
+    .warn-box p {
+      font-size: 12px;
+      color: #b45309;
+      line-height: 1.65;
+    }
+
+    /* Shortcut table */
+    .shortcut-list {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .shortcut-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      font-size: 13px;
+      color: #555;
+      border-radius: 6px;
+    }
+
+    .shortcut-row:hover {
+      background: rgba(0, 0, 0, 0.025);
+    }
+
+    .shortcut-row kbd {
+      font-family: "SF Mono", "Menlo", "Monaco", "Consolas", monospace;
+      font-size: 11px;
+      padding: 3px 8px;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      color: #444;
+      box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
+    }
+
+    .format-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      font-size: 13px;
+      color: #555;
+    }
+
+    .format-row span:first-child {
+      font-family: "SF Mono", "Menlo", monospace;
+      font-size: 12px;
+      color: #3b82f6;
+    }
+
+    /* Comparison table */
+    .compare-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      margin-top: 8px;
+    }
+
+    .compare-table th {
+      text-align: left;
+      font-weight: 600;
+      color: #333;
+      padding: 10px 12px;
+      background: #f3f4f6;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .compare-table th:first-child {
+      border-radius: 8px 0 0 0;
+    }
+
+    .compare-table th:last-child {
+      border-radius: 0 8px 0 0;
+    }
+
+    .compare-table td {
+      padding: 10px 12px;
+      color: #555;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    .compare-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .compare-table .yes { color: #16a34a; font-weight: 500; }
+    .compare-table .no { color: #999; }
+
+    /* Dark theme support */
+    @media (prefers-color-scheme: dark) {
+      body { background: #1a1a1f; color: #ccc; }
+      .app-header h1 { color: #eee; }
+      .section-title { color: #eee; border-bottom-color: #333; }
+      .feature { background: #222228; border-color: #333; }
+      .feature-name { color: #eee; }
+      .feature p { color: #aaa; }
+      .tip-box { background: rgba(59, 130, 246, 0.08); }
+      .warn-box { background: rgba(245, 158, 11, 0.08); }
+      .warn-box p { color: #f59e0b; }
+      .shortcut-row { color: #aaa; }
+      .shortcut-row:hover { background: rgba(255, 255, 255, 0.03); }
+      .shortcut-row kbd { background: #2a2a30; border-color: #444; color: #bbb; box-shadow: none; }
+      .format-row { color: #aaa; }
+      .compare-table th { background: #2a2a30; color: #ddd; border-bottom-color: #444; }
+      .compare-table td { color: #aaa; border-bottom-color: #2a2a30; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="app-header">
+      <h1>Hider 使用帮助</h1>
+      <p>摸鱼阅读器 — 看小说，不被发现</p>
+    </div>
+
+    <!-- 怎么看小说 -->
+    <div class="section">
+      <div class="section-title">怎么看小说</div>
+
+      <div class="feature">
+        <div class="feature-name">看本地文件</div>
+        <p>把 .txt 或 .epub 文件直接拖进窗口，或点击左上角文件夹图标打开。打开后在应用内阅读，字体大小、颜色、行高都可以在「显示」标签中调整。</p>
+      </div>
+
+      <div class="feature">
+        <div class="feature-name">看网页小说</div>
+        <p>点击顶部「网页」标签切换到浏览器模式，输入小说网站地址即可。打开小说页面后，可以用下面的「阅读模式」和「提取正文」来优化阅读体验。</p>
+      </div>
+    </div>
+
+    <!-- 阅读模式 vs 提取正文 -->
+    <div class="section">
+      <div class="section-title">网页看小说的两个功能 <span class="pro-tag">Pro</span></div>
+
+      <div class="feature">
+        <div class="feature-name">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+          阅读模式
+          <span class="feature-subtitle">— 去掉页面干扰</span>
+        </div>
+        <p>点击地址栏右侧的书本图标开启。开启后，网页上的广告、弹窗、推荐栏、登录提示等干扰内容全部被清除，页面只剩下小说正文。你在「显示」标签中设置的字体大小、颜色、背景色也会同步生效。</p>
+        <p>看完一章后，点击页面里的「下一章」链接翻到下一章，阅读模式会自动保持。</p>
+        <div class="tip-box">
+          <p>推荐在起点、番茄、晋江等主流站点使用，包括已购买的 VIP 付费章节都能正常阅读。</p>
+        </div>
+      </div>
+
+      <div class="feature">
+        <div class="feature-name">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+          提取正文
+          <span class="feature-subtitle">— 拉到应用内看</span>
+        </div>
+        <p>点击地址栏右侧的「提取正文」按钮。小说正文会被提取出来，放到应用自己的阅读界面中显示——完全看不出你在浏览网页，隐蔽性更强。</p>
+        <p>看完当前章节后，会自动加载下一章内容，无需任何操作，持续往下滚动就能一直看。</p>
+        <div class="warn-box">
+          <p>少数站点（如起点 VIP）对付费内容做了加密保护，提取出来可能是乱码。遇到这种情况，请改用上面的「阅读模式」。</p>
+        </div>
+      </div>
+
+      <!-- 对比表格 -->
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th>阅读模式</th>
+            <th>提取正文</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>去广告/去干扰</td>
+            <td class="yes">支持</td>
+            <td class="yes">支持</td>
+          </tr>
+          <tr>
+            <td>自定义字体颜色</td>
+            <td class="yes">支持</td>
+            <td class="yes">支持</td>
+          </tr>
+          <tr>
+            <td>VIP 付费章节</td>
+            <td class="yes">正常阅读</td>
+            <td class="no">可能乱码</td>
+          </tr>
+          <tr>
+            <td>自动翻章</td>
+            <td class="no">需手动点击</td>
+            <td class="yes">自动加载</td>
+          </tr>
+          <tr>
+            <td>隐蔽性</td>
+            <td class="no">仍是网页外观</td>
+            <td class="yes">像在用工具软件</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 站点规则 -->
+    <div class="section">
+      <div class="section-title">站点规则 <span class="pro-tag">Pro</span></div>
+      <div class="feature">
+        <p>打开「显示」标签，访问网页时会出现「站点规则」区域。可以为每个网站单独设置字体、颜色、是否自动开启阅读模式等。</p>
+        <p>起点、番茄、飞卢、纵横、晋江、17K、刺猬猫、69书吧、微信公众号、知乎等常见站点已内置规则，打开即可直接使用，无需手动配置。</p>
+      </div>
+    </div>
+
+    <!-- 怎么不被发现 -->
+    <div class="section">
+      <div class="section-title">怎么不被发现</div>
+
+      <div class="feature">
+        <div class="feature-name">精读模式</div>
+        <p>在「显示」标签中把「可见行数」设为 1~3 行。屏幕上只显示几行文字，看起来像在读代码或查文档，不容易引起注意。用方向键或 J/K 键翻下一段。</p>
+      </div>
+
+      <div class="feature">
+        <div class="feature-name">预设方案</div>
+        <p>在「预设」标签中快速切换外观。例如「幽灵」预设会把窗口缩小、降低透明度、隐藏背景面板，让窗口几乎看不见。也可以保存自己常用的设置组合，一键切换。</p>
+      </div>
+
+      <div class="feature">
+        <div class="feature-name">老板键</div>
+        <p>按 Ctrl+Shift+X（Mac 上是 Cmd+Shift+X）一键让窗口消失到系统托盘，再按一次恢复。有人过来时一秒隐藏，人走了再恢复继续看。快捷键可以自定义。</p>
+      </div>
+
+      <div class="feature">
+        <div class="feature-name">自动隐藏</div>
+        <p>开启后鼠标离开窗口会自动消失，鼠标移回窗口位置自动出现。配合「隐藏背景」选项，文字像悬浮在屏幕上一样，没有窗口边框和底色，极致隐蔽。</p>
+      </div>
+    </div>
+
+    <!-- 快捷键 -->
+    <div class="section">
+      <div class="section-title">快捷键</div>
+      <div class="shortcut-list">
+        <div class="shortcut-row"><span>向下翻页</span><kbd>空格 / PgDn</kbd></div>
+        <div class="shortcut-row"><span>向上翻页</span><kbd>PgUp</kbd></div>
+        <div class="shortcut-row"><span>滚动 / 精读模式切段</span><kbd>上/下方向键</kbd></div>
+        <div class="shortcut-row"><span>精读模式翻段</span><kbd>J / K</kbd></div>
+        <div class="shortcut-row"><span>放大 / 缩小字体</span><kbd>Ctrl + / -</kbd></div>
+        <div class="shortcut-row"><span>显示 / 隐藏窗口</span><kbd>Ctrl+Shift+H</kbd></div>
+        <div class="shortcut-row"><span>老板键</span><kbd>Ctrl+Shift+X</kbd></div>
+        <div class="shortcut-row"><span>关闭设置面板</span><kbd>Esc</kbd></div>
+      </div>
+    </div>
+
+    <!-- 支持格式 -->
+    <div class="section">
+      <div class="section-title">支持的文件格式</div>
+      <div class="format-row"><span>.txt .md .text</span><span>纯文本</span></div>
+      <div class="format-row"><span>.epub</span><span>电子书</span></div>
+    </div>
+
+  </div>
+</body>
+</html>

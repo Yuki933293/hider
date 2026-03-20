@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hider</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <div id="titlebar">
+      <div id="mode-switcher">
+        <button class="mode-btn active" data-mode="file">文件</button>
+        <button class="mode-btn" data-mode="web">网页</button>
+      </div>
+      <div id="titlebar-drag">
+        <span id="titlebar-filename">Hider - 拖入文件或点击文件夹图标打开</span>
+        <button id="btn-back-to-web" class="hidden" title="返回网页浏览">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline points="15 18 9 12 15 6"></polyline>
+          </svg>
+        </button>
+        <button id="btn-close-file" class="hidden" title="关闭文件">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div id="titlebar-buttons">
+        <button id="btn-open" title="打开文件">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+          </svg>
+        </button>
+        <button id="btn-settings" title="设置">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
+            <circle cx="12" cy="12" r="3"></circle>
+          </svg>
+        </button>
+        <button id="btn-minimize" title="最小化">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+        </button>
+        <button id="btn-close" title="关闭">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- URL bar (web mode only) -->
+    <div id="url-bar" class="hidden">
+      <div id="nav-buttons">
+        <button id="btn-back" title="后退">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="15 18 9 12 15 6"></polyline>
+          </svg>
+        </button>
+        <button id="btn-forward" title="前进">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="9 18 15 12 9 6"></polyline>
+          </svg>
+        </button>
+        <button id="btn-reload" title="刷新">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+          </svg>
+        </button>
+      </div>
+      <div id="url-input-wrapper">
+        <input type="text" id="url-input" placeholder="搜索或输入网址..." spellcheck="false" autocomplete="off">
+      </div>
+      <button id="btn-bookmark" title="收藏此页">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+        </svg>
+      </button>
+      <button id="btn-bookmarks-list" title="书签列表">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="8" y1="6" x2="21" y2="6"></line>
+          <line x1="8" y1="12" x2="21" y2="12"></line>
+          <line x1="8" y1="18" x2="21" y2="18"></line>
+          <line x1="3" y1="6" x2="3.01" y2="6"></line>
+          <line x1="3" y1="12" x2="3.01" y2="12"></line>
+          <line x1="3" y1="18" x2="3.01" y2="18"></line>
+        </svg>
+      </button>
+      <button id="btn-reader-mode" title="阅读模式 - 净化页面，优化排版">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+          <line x1="7" y1="8" x2="17" y2="8"></line>
+          <line x1="7" y1="12" x2="17" y2="12"></line>
+          <line x1="7" y1="16" x2="13" y2="16"></line>
+        </svg>
+      </button>
+      <button id="btn-extract-read" title="提取正文到精读模式" class="pro-feature">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+          <polyline points="9 10 12 7 15 10"></polyline>
+          <line x1="12" y1="7" x2="12" y2="13"></line>
+        </svg>
+        <span class="extract-label">提取正文</span>
+      </button>
+    </div>
+
+    <!-- Bookmarks dropdown -->
+    <div id="bookmarks-dropdown" class="hidden">
+      <div id="bookmarks-empty">暂无书签</div>
+      <div id="bookmarks-list"></div>
+    </div>
+
+    <div id="reader-container">
+      <div id="reader-content">
+        <div id="placeholder">
+          <div class="placeholder-icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4">
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+            </svg>
+          </div>
+          <p>拖入文件或点击文件夹图标打开</p>
+          <p class="shortcut-hint">支持格式：.txt .md .epub</p>
+          <p class="shortcut-hint">显隐切换：Ctrl+Shift+H | 老板键：Ctrl+Shift+X</p>
+          <div id="recent-files"></div>
+        </div>
+        <div id="text-content"></div>
+      </div>
+      <div id="single-line-overlay" class="hidden">
+        <div id="single-line-text"></div>
+      </div>
+      <!-- Webview (web mode only) -->
+      <webview id="webview" partition="persist:reader" allowpopups class="hidden"></webview>
+    </div>
+
+    <div id="progress-bar">
+      <div id="progress-fill"></div>
+    </div>
+
+    <div id="settings-panel" class="hidden">
+      <div class="settings-header">
+        <h3>设置</h3>
+        <button id="btn-close-settings">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="settings-body">
+        <div class="settings-group">
+          <div class="custom-presets-header">
+            <h4>预设</h4>
+            <div class="presets-header-actions">
+              <button class="btn-reset-presets" id="btn-reset-presets" title="恢复默认预设">恢复默认</button>
+              <button class="btn-save-preset" id="btn-save-preset">+ 新建</button>
+            </div>
+          </div>
+          <div id="custom-presets" class="custom-presets-list"></div>
+        </div>
+
+        <div class="settings-tabs">
+          <button class="tab-btn active" data-tab="tab-display">显示</button>
+          <button class="tab-btn" data-tab="tab-mode">模式</button>
+          <button class="tab-btn" data-tab="tab-hotkey">快捷键</button>
+          <button class="tab-btn" data-tab="tab-help">帮助</button>
+        </div>
+
+        <!-- 显示 -->
+        <div class="tab-content active" id="tab-display">
+          <!-- Site rules: web mode only -->
+          <div class="settings-group site-rules-section pro-feature" data-mode="web">
+            <div class="site-rules-header">
+              <h4>站点规则 <span class="pro-badge site-rules-pro-badge">Pro</span></h4>
+              <span class="site-domain-badge" id="site-domain">—</span>
+            </div>
+            <div id="site-rules-controls">
+              <div class="site-rules-hint hidden" id="site-rules-hint">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="12" y1="8" x2="12" y2="12"></line>
+                  <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+                <span>请先开启<button class="site-rules-hint-btn" id="btn-enable-reader">阅读模式</button>后设置生效</span>
+              </div>
+              <div class="setting-row">
+                <label>自动阅读</label>
+                <div class="setting-control">
+                  <label class="toggle">
+                    <input type="checkbox" id="set-site-auto-reader">
+                    <span class="toggle-slider"></span>
+                  </label>
+                  <span class="setting-desc">自动开启阅读模式</span>
+                </div>
+              </div>
+              <div class="setting-row">
+                <label>覆盖文字</label>
+                <div class="setting-control">
+                  <label class="toggle">
+                    <input type="checkbox" id="set-site-override-text" checked>
+                    <span class="toggle-slider"></span>
+                  </label>
+                  <input type="color" id="set-site-text-color" class="site-color-picker" value="#333333">
+                </div>
+              </div>
+              <div class="setting-row">
+                <label>覆盖背景</label>
+                <div class="setting-control">
+                  <label class="toggle">
+                    <input type="checkbox" id="set-site-override-bg" checked>
+                    <span class="toggle-slider"></span>
+                  </label>
+                  <input type="color" id="set-site-bg-color" class="site-color-picker" value="#ffffff">
+                </div>
+              </div>
+              <div class="setting-row">
+                <label>隐藏图片</label>
+                <div class="setting-control">
+                  <label class="toggle">
+                    <input type="checkbox" id="set-site-hide-images">
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+              </div>
+              <div class="site-rules-advanced">
+                <button class="site-rules-toggle-advanced" id="btn-toggle-advanced">高级选项</button>
+                <div class="site-rules-advanced-body hidden" id="site-rules-advanced">
+                  <div class="setting-row">
+                    <label>内容区域</label>
+                    <div class="setting-control">
+                      <input type="text" id="set-site-content-selector" class="site-selector-input"
+                        placeholder="自动检测" spellcheck="false" autocomplete="off">
+                    </div>
+                  </div>
+                  <div class="setting-row">
+                    <label>移除元素</label>
+                    <div class="setting-control">
+                      <input type="text" id="set-site-remove-selectors" class="site-selector-input"
+                        placeholder="额外 CSS 选择器" spellcheck="false" autocomplete="off">
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="site-rules-actions">
+                <button class="site-rules-save-btn" id="btn-save-site-rule">保存站点设置</button>
+                <button class="site-rules-reset-btn" id="btn-reset-site-rule">重置</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-group" data-mode="file">
+            <h4>字体</h4>
+            <div class="setting-row">
+              <label>大小</label>
+              <div class="setting-control">
+                <input type="range" id="set-font-size" min="10" max="32" step="1" value="16">
+                <span id="val-font-size">16px</span>
+              </div>
+            </div>
+            <div class="setting-row">
+              <label>颜色</label>
+              <div class="setting-control">
+                <input type="color" id="set-font-color" value="#333333">
+              </div>
+            </div>
+            <div class="setting-row">
+              <label>行高</label>
+              <div class="setting-control">
+                <input type="range" id="set-line-height" min="1.2" max="3" step="0.1" value="1.8">
+                <span id="val-line-height">1.8</span>
+              </div>
+            </div>
+          </div>
+          <div class="settings-group">
+            <h4>透明度</h4>
+            <div class="setting-row">
+              <label>内容</label>
+              <div class="setting-control">
+                <input type="range" id="set-font-opacity" min="0.05" max="1" step="0.05" value="1">
+                <span id="val-font-opacity">100%</span>
+              </div>
+            </div>
+            <div class="setting-row">
+              <label>背景</label>
+              <div class="setting-control">
+                <input type="range" id="set-bg-opacity" min="0" max="1" step="0.05" value="0.95">
+                <span id="val-bg-opacity">95%</span>
+              </div>
+            </div>
+          </div>
+          <div class="settings-group">
+            <h4>背景色</h4>
+            <div class="setting-row">
+              <label>颜色</label>
+              <div class="setting-control">
+                <input type="color" id="set-bg-color" value="#ffffff">
+              </div>
+            </div>
+            <div class="setting-row">
+              <label>无背景</label>
+              <div class="setting-control">
+                <label class="toggle">
+                  <input type="checkbox" id="set-hide-bg">
+                  <span class="toggle-slider"></span>
+                </label>
+                <span class="setting-desc">窗口完全透明</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 模式 -->
+        <div class="tab-content" id="tab-mode">
+          <div class="settings-group">
+            <h4>阅读模式</h4>
+            <div class="setting-row">
+              <label>悬停模式</label>
+              <div class="setting-control">
+                <label class="toggle">
+                  <input type="checkbox" id="set-hover-mode">
+                  <span class="toggle-slider"></span>
+                </label>
+                <span class="setting-desc">鼠标移入显示，移出隐藏</span>
+              </div>
+            </div>
+            <div class="setting-row" data-mode="file">
+              <label>显示行数</label>
+              <div class="setting-control">
+                <input type="range" id="set-visible-lines" min="0" max="20" step="1" value="0">
+                <span id="val-visible-lines">全部</span>
+              </div>
+            </div>
+            <div class="setting-row">
+              <label>自动隐藏</label>
+              <div class="setting-control">
+                <label class="toggle">
+                  <input type="checkbox" id="set-auto-hide">
+                  <span class="toggle-slider"></span>
+                </label>
+                <span class="setting-desc">鼠标离开窗口自动隐藏</span>
+              </div>
+            </div>
+            <div class="setting-row">
+              <label>窗口置顶</label>
+              <div class="setting-control">
+                <label class="toggle">
+                  <input type="checkbox" id="set-always-on-top">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+          </div>
+          <div class="settings-group">
+            <h4>窗口尺寸</h4>
+            <div id="window-size-display" class="window-size-display"></div>
+          </div>
+        </div>
+
+        <!-- 快捷键 -->
+        <div class="tab-content" id="tab-hotkey">
+          <div class="settings-group">
+            <h4>快捷键设置</h4>
+            <div class="setting-row">
+              <label>显隐切换</label>
+              <div class="setting-control">
+                <div class="hotkey-input" id="set-toggle-hotkey" data-key="toggleHotkey" tabindex="0">Ctrl+Shift+H</div>
+              </div>
+            </div>
+            <div class="setting-row">
+              <label>老板键</label>
+              <div class="setting-control">
+                <div class="hotkey-input" id="set-boss-hotkey" data-key="bossHotkey" tabindex="0">Ctrl+Shift+X</div>
+              </div>
+            </div>
+            <div class="hotkey-footer">
+              <p class="hotkey-hint">点击输入框后按下新的快捷键组合</p>
+              <button class="hotkey-restore-btn" id="btn-restore-hotkeys">恢复默认</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 帮助 -->
+        <div class="tab-content" id="tab-help">
+          <div class="settings-group pro-section">
+            <h4>Pro 版</h4>
+            <div id="pro-status"></div>
+          </div>
+
+          <div class="settings-group">
+            <h4>快捷键</h4>
+            <div class="help-list">
+              <div class="help-row"><kbd>空格 / PgDn</kbd><span>向下翻页</span></div>
+              <div class="help-row"><kbd>PgUp</kbd><span>向上翻页</span></div>
+              <div class="help-row"><kbd>上/下 / J/K</kbd><span>精读模式切段</span></div>
+              <div class="help-row"><kbd>Ctrl + / -</kbd><span>放大 / 缩小字体</span></div>
+              <div class="help-row"><kbd>Ctrl+Shift+H</kbd><span>显示 / 隐藏窗口</span></div>
+              <div class="help-row"><kbd>Ctrl+Shift+X</kbd><span>老板键</span></div>
+            </div>
+          </div>
+
+          <div class="settings-group">
+            <button class="help-open-btn" id="btn-open-help">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                <line x1="12" y1="17" x2="12.01" y2="17"></line>
+              </svg>
+              查看完整使用帮助
+            </button>
+          </div>
+        </div>
+      </div>
+      <div id="preset-save-bar" class="preset-save-bar hidden">
+        <span class="preset-save-hint">预设已修改</span>
+        <div class="preset-save-actions">
+          <button id="btn-preset-discard" class="preset-discard-btn">放弃</button>
+          <button id="btn-preset-save" class="preset-save-btn">保存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
