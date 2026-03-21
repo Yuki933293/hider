@@ -618,7 +618,8 @@ button, .hotkey-input, .toggle, .tab-btn {
   top: var(--titlebar-height);
   right: 0;
   bottom: 0;
-  width: var(--panel-width);
+  width: min(var(--panel-width), 100%);
+  max-width: 100%;
   background: rgba(248, 249, 250, 0.97);
   backdrop-filter: blur(24px) saturate(180%);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
@@ -1383,11 +1384,27 @@ input[type="color"]::-webkit-color-swatch {
   transition: opacity 0.4s ease;
 }
 
+/* Transparent overlay to detect mouse entering webview area in hover mode */
+#webview-hover-overlay {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 5;
+}
+
+.hover-mode:not(.mouse-over) #webview-hover-overlay {
+  display: block;
+}
+
 .hover-mode.mouse-over #text-content,
 .hover-mode.mouse-over #single-line-text,
 .hover-mode.mouse-over #webview {
   opacity: var(--font-opacity) !important;
 }
+
 
 .hover-mode #titlebar {
   opacity: 0.1;
