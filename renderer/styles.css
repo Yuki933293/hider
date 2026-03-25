@@ -1368,11 +1368,22 @@ input[type="color"]::-webkit-color-swatch {
   transition: opacity 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-#app.auto-hidden {
+#app.auto-hidden #titlebar,
+#app.auto-hidden #reader-content,
+#app.auto-hidden #reader-container,
+#app.auto-hidden #url-bar,
+#app.auto-hidden #progress-bar,
+#app.auto-hidden webview {
   opacity: 0.03;
+  transition: opacity 0.3s ease;
 }
 
-#app.auto-hidden.mouse-over {
+#app.auto-hidden.mouse-over #titlebar,
+#app.auto-hidden.mouse-over #reader-content,
+#app.auto-hidden.mouse-over #reader-container,
+#app.auto-hidden.mouse-over #url-bar,
+#app.auto-hidden.mouse-over #progress-bar,
+#app.auto-hidden.mouse-over webview {
   opacity: 1;
 }
 
@@ -1395,8 +1406,10 @@ input[type="color"]::-webkit-color-swatch {
   z-index: 5;
 }
 
-.hover-mode:not(.mouse-over) #webview-hover-overlay {
+.hover-mode:not(.mouse-over) #webview-hover-overlay,
+#app.auto-hidden:not(.mouse-over) #webview-hover-overlay {
   display: block;
+  opacity: 1 !important;
 }
 
 .hover-mode.mouse-over #text-content,
