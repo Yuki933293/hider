@@ -229,6 +229,7 @@ dom.webview.addEventListener('mouseleave', () => {
 // Transparent overlay catches mouse in webview area when hover-mode is inactive
 const webviewOverlay = document.getElementById('webview-hover-overlay');
 webviewOverlay.addEventListener('mouseenter', () => {
+  mouseInWebview = true;
   setMouseOver();
 });
 webviewOverlay.addEventListener('mouseleave', (e) => {
@@ -236,7 +237,10 @@ webviewOverlay.addEventListener('mouseleave', (e) => {
   // If mouse left the window entirely, hide
   const rect = dom.app.getBoundingClientRect();
   const outside = e.clientX <= rect.left || e.clientX >= rect.right || e.clientY <= rect.top || e.clientY >= rect.bottom;
-  if (outside) setMouseLeft();
+  if (outside) {
+    mouseInWebview = false;
+    setMouseLeft();
+  }
 });
 
 // ============ Manual Window Drag ============

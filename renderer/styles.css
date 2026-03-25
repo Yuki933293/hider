@@ -1404,12 +1404,18 @@ input[type="color"]::-webkit-color-swatch {
   width: 100%;
   height: 100%;
   z-index: 5;
+  opacity: 1 !important;
 }
 
-.hover-mode:not(.mouse-over) #webview-hover-overlay,
-#app.auto-hidden:not(.mouse-over) #webview-hover-overlay {
+/* Overlay visible in hover/auto-hidden mode, but pointer-events only when not mouse-over */
+.hover-mode #webview-hover-overlay,
+#app.auto-hidden #webview-hover-overlay {
   display: block;
-  opacity: 1 !important;
+}
+
+.hover-mode.mouse-over #webview-hover-overlay,
+#app.auto-hidden.mouse-over #webview-hover-overlay {
+  pointer-events: none;
 }
 
 .hover-mode.mouse-over #text-content,
