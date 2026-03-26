@@ -365,6 +365,9 @@ function createWindow() {
     },
   });
 
+  if (settings.alwaysOnTop) {
+    mainWindow.setAlwaysOnTop(true, 'pop-up-menu');
+  }
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
   // Intercept new windows from webview: navigate in-place instead of opening new window
@@ -409,7 +412,7 @@ function createTray() {
       checked: settings.alwaysOnTop,
       click: (item) => {
         settings.alwaysOnTop = item.checked;
-        mainWindow?.setAlwaysOnTop(item.checked);
+        mainWindow?.setAlwaysOnTop(item.checked, 'pop-up-menu');
         saveSettings();
       },
     },
@@ -583,7 +586,7 @@ ipcMain.handle('save-settings', (event, newSettings) => {
   settings = { ...settings, ...newSettings };
   saveSettings();
   if (mainWindow) {
-    mainWindow.setAlwaysOnTop(settings.alwaysOnTop);
+    mainWindow.setAlwaysOnTop(settings.alwaysOnTop, 'pop-up-menu');
   }
   registerShortcuts();
   return settings;
