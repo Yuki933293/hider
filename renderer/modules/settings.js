@@ -10,7 +10,7 @@ const defaultPresets = [
   { name: '幽灵', fontColor: '#888888', fontOpacity: 0.15, bgColor: '#000000', bgOpacity: 0,
     hoverMode: true, visibleLines: 0, autoHideOnLeave: true, hideBg: true, fontSize: 14, lineHeight: 1.6 },
   { name: '暗淡', fontColor: '#666666', fontOpacity: 0.4, bgColor: '#f5f5f5', bgOpacity: 0.3,
-    hoverMode: true, visibleLines: 0, autoHideOnLeave: false, hideBg: false, fontSize: 14, lineHeight: 1.6 },
+    hoverMode: true, visibleLines: 0, autoHideOnLeave: true, hideBg: false, fontSize: 14, lineHeight: 1.6 },
   { name: '正常', fontColor: '#333333', fontOpacity: 1.0, bgColor: '#ffffff', bgOpacity: 0.95,
     hoverMode: false, visibleLines: 0, autoHideOnLeave: false, hideBg: false, fontSize: 16, lineHeight: 1.8 },
   { name: '深色', fontColor: '#00ff41', fontOpacity: 0.8, bgColor: '#0d0d0d', bgOpacity: 0.9,
@@ -71,7 +71,6 @@ export function initSettings() {
     bgOpacity: document.getElementById('set-bg-opacity'),
     hoverMode: document.getElementById('set-hover-mode'),
     visibleLines: document.getElementById('set-visible-lines'),
-    autoHide: document.getElementById('set-auto-hide'),
     hideBg: document.getElementById('set-hide-bg'),
     alwaysOnTop: document.getElementById('set-always-on-top'),
   };
@@ -132,6 +131,7 @@ export function initSettings() {
 
   controls.hoverMode.addEventListener('change', (e) => {
     state.settings.hoverMode = e.target.checked;
+    state.settings.autoHideOnLeave = e.target.checked;
     markPresetDirty();
     applySettings();
     debounceSave();
@@ -154,12 +154,6 @@ export function initSettings() {
     });
   });
 
-  controls.autoHide.addEventListener('change', (e) => {
-    state.settings.autoHideOnLeave = e.target.checked;
-    markPresetDirty();
-    applySettings();
-    debounceSave();
-  });
 
   controls.hideBg.addEventListener('change', (e) => {
     state.settings.hideBg = e.target.checked;
@@ -256,33 +250,44 @@ export function applySettings() {
 
   const isDark = isColorDark(state.settings.bgColor) && state.settings.bgOpacity > 0.3 && !state.settings.hideBg;
   dom.settingsPanel.classList.toggle('dark-theme', isDark);
+  dom.app.classList.toggle('dark-theme', isDark);
 
   const titlebar = document.getElementById('titlebar');
-  if (state.settings.hideBg) {
-    titlebar.style.background = 'transparent';
-    dom.titleFilename.style.color = 'rgba(0, 0, 0, 0.5)';
-    dom.btnCloseFile.style.color = 'rgba(0, 0, 0, 0.3)';
-    document.querySelectorAll('#titlebar-buttons button').forEach(b => {
-      b.style.color = 'rgba(0, 0, 0, 0.5)';
-    });
-    // Reset settings panel to default light style (clear any dark mode inline styles)
-    dom.settingsPanel.style.background = 'rgba(248, 249, 250, 0.97)';
-    dom.settingsPanel.style.borderColor = 'rgba(0, 0, 0, 0.06)';
-  } else if (isDark) {
-    titlebar.style.background = `rgba(${bgRgb.r}, ${bgRgb.g}, ${bgRgb.b}, ${Math.min(state.settings.bgOpacity + 0.05, 1)})`;
+  const modeBtns = document.querySelectorAll('.mode-btn');
+  const modeSwitcher = document.getElementById('mode-switcher');
+  if (state.settings.hideBg || isDark) {
+    titlebar.style.background = state.settings.hideBg ? 'transparent'
+      : `rgba(${bgRgb.r}, ${bgRgb.g}, ${bgRgb.b}, ${Math.min(state.settings.bgOpacity + 0.05, 1)})`;
     dom.titleFilename.style.color = 'rgba(255, 255, 255, 0.6)';
     dom.btnCloseFile.style.color = 'rgba(255, 255, 255, 0.4)';
     document.querySelectorAll('#titlebar-buttons button').forEach(b => {
       b.style.color = 'rgba(255, 255, 255, 0.6)';
     });
-    dom.settingsPanel.style.background = 'rgba(30, 30, 40, 0.98)';
-    dom.settingsPanel.style.borderColor = 'rgba(255, 255, 255, 0.08)';
+    modeSwitcher.style.background = 'rgba(255, 255, 255, 0.06)';
+    modeBtns.forEach(b => {
+      b.style.color = b.classList.contains('active') ? 'rgba(255, 255, 255, 0.7)' : 'rgba(255, 255, 255, 0.35)';
+      b.style.background = b.classList.contains('active') ? 'rgba(255, 255, 255, 0.1)' : 'transparent';
+      b.style.boxShadow = 'none';
+    });
+    if (state.settings.hideBg) {
+      dom.settingsPanel.style.background = 'rgba(248, 249, 250, 0.97)';
+      dom.settingsPanel.style.borderColor = 'rgba(0, 0, 0, 0.06)';
+    } else {
+      dom.settingsPanel.style.background = 'rgba(30, 30, 40, 0.98)';
+      dom.settingsPanel.style.borderColor = 'rgba(255, 255, 255, 0.08)';
+    }
   } else {
     titlebar.style.background = `rgba(${bgRgb.r}, ${bgRgb.g}, ${bgRgb.b}, ${Math.min(state.settings.bgOpacity + 0.05, 1)})`;
     dom.titleFilename.style.color = 'rgba(0, 0, 0, 0.55)';
     dom.btnCloseFile.style.color = 'rgba(0, 0, 0, 0.3)';
     document.querySelectorAll('#titlebar-buttons button').forEach(b => {
       b.style.color = 'rgba(0, 0, 0, 0.55)';
+    });
+    modeSwitcher.style.background = '';
+    modeBtns.forEach(b => {
+      b.style.color = '';
+      b.style.background = '';
+      b.style.boxShadow = '';
     });
     dom.settingsPanel.style.background = 'rgba(248, 249, 250, 0.97)';
     dom.settingsPanel.style.borderColor = 'rgba(0, 0, 0, 0.06)';
@@ -349,7 +354,6 @@ export function syncControlsToSettings() {
   controls.visibleLines.value = state.settings.visibleLines || 0;
   document.getElementById('val-visible-lines').textContent =
     state.settings.visibleLines > 0 ? `${state.settings.visibleLines} 行` : '全部';
-  controls.autoHide.checked = state.settings.autoHideOnLeave;
   controls.hideBg.checked = state.settings.hideBg;
   controls.alwaysOnTop.checked = state.settings.alwaysOnTop;
 
@@ -651,7 +655,6 @@ export function renderCustomPresets() {
     const opacityInfo = `${Math.round((preset.fontOpacity ?? 1) * 100)}%`;
     const tags = [];
     if (preset.hoverMode) tags.push('悬停');
-    if (preset.autoHideOnLeave) tags.push('自动隐藏');
     if (preset.hideBg) tags.push('无背景');
     if (preset.visibleLines > 0) tags.push(`${preset.visibleLines}行`);
 
