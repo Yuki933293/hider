@@ -167,81 +167,55 @@ document.addEventListener('drop', (e) => {
 
 // ============ Mouse Tracking (hover mode + auto-hide) ============
 let mouseOverApp = false;
-let mouseInWebview = false;
-let mouseLeaveTimeout = null;
+let hoverPollInterval = null;
 
-function setMouseOver() {
+function showWindow() {
+  if (mouseOverApp) return;
   mouseOverApp = true;
-  if (mouseLeaveTimeout) {
-    clearTimeout(mouseLeaveTimeout);
-    mouseLeaveTimeout = null;
-  }
   dom.app.classList.add('mouse-over');
   if (state.settings.autoHideOnLeave) {
     dom.app.classList.remove('auto-hidden');
   }
+  startHoverPoll();
 }
 
-function setMouseLeft() {
+function hideWindow() {
   mouseOverApp = false;
-  if (mouseLeaveTimeout) clearTimeout(mouseLeaveTimeout);
-  mouseLeaveTimeout = setTimeout(() => {
-    if (mouseOverApp || mouseInWebview) return;
-    dom.app.classList.remove('mouse-over');
-    if (state.settings.autoHideOnLeave) {
-      dom.app.classList.add('auto-hidden');
-    }
-  }, 150);
+  stopHoverPoll();
+  dom.app.classList.remove('mouse-over');
+  if (state.settings.autoHideOnLeave) {
+    dom.app.classList.add('auto-hidden');
+  }
 }
 
-// Document area (non-webview parts: titlebar, settings, etc.)
-document.addEventListener('mouseenter', setMouseOver);
-document.addEventListener('mouseleave', () => {
-  // document mouseleave fires when mouse leaves window OR enters webview
-  // Don't hide if mouse went into webview
-  if (!mouseInWebview) setMouseLeft();
-});
-document.addEventListener('mousemove', () => {
-  if (!mouseOverApp) setMouseOver();
-});
-
-// Webview is a separate browsing context
-dom.webview.addEventListener('mouseenter', () => {
-  mouseInWebview = true;
-  setMouseOver();
-});
-dom.webview.addEventListener('mouseleave', () => {
-  mouseInWebview = false;
-  // Mouse might go to titlebar or leave window — check after brief delay
-  let reenteredDoc = false;
-  const onMove = () => { reenteredDoc = true; };
-  document.addEventListener('mousemove', onMove, { once: true });
-  setTimeout(() => {
-    document.removeEventListener('mousemove', onMove);
-    if (reenteredDoc) {
-      setMouseOver();
-    } else {
-      setMouseLeft();
+// Poll mouse position via IPC to reliably detect when mouse leaves window
+// This works regardless of webview stealing events
+function startHoverPoll() {
+  stopHoverPoll();
+  if (!state.settings.hoverMode) return;
+  hoverPollInterval = setInterval(async () => {
+    const inside = await window.api.isMouseInWindow();
+    if (!inside && mouseOverApp) {
+      hideWindow();
     }
-  }, 150);
+  }, 200);
+}
+
+function stopHoverPoll() {
+  if (hoverPollInterval) {
+    clearInterval(hoverPollInterval);
+    hoverPollInterval = null;
+  }
+}
+
+// Entry detection: document events + overlay for webview area
+document.addEventListener('mouseenter', showWindow);
+document.addEventListener('mousemove', () => {
+  if (!mouseOverApp) showWindow();
 });
 
-// Transparent overlay catches mouse in webview area when hover-mode is inactive
 const webviewOverlay = document.getElementById('webview-hover-overlay');
-webviewOverlay.addEventListener('mouseenter', () => {
-  mouseInWebview = true;
-  setMouseOver();
-});
-webviewOverlay.addEventListener('mouseleave', (e) => {
-  // If mouse left the overlay but stayed in window (e.g. moved to titlebar), keep showing
-  // If mouse left the window entirely, hide
-  const rect = dom.app.getBoundingClientRect();
-  const outside = e.clientX <= rect.left || e.clientX >= rect.right || e.clientY <= rect.top || e.clientY >= rect.bottom;
-  if (outside) {
-    mouseInWebview = false;
-    setMouseLeft();
-  }
-});
+webviewOverlay.addEventListener('mouseenter', showWindow);
 
 // ============ Manual Window Drag ============
 let isDragging = false;

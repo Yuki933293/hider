@@ -614,6 +614,14 @@ ipcMain.handle('set-ignore-mouse', (event, ignore) => {
   mainWindow?.setIgnoreMouseEvents(ignore, { forward: true });
 });
 
+ipcMain.handle('is-mouse-in-window', () => {
+  if (!mainWindow) return false;
+  const { x, y } = screen.getCursorScreenPoint();
+  const bounds = mainWindow.getBounds();
+  return x >= bounds.x && x <= bounds.x + bounds.width &&
+         y >= bounds.y && y <= bounds.y + bounds.height;
+});
+
 ipcMain.handle('start-drag', () => {
   if (!mainWindow) return;
   const [winX, winY] = mainWindow.getPosition();

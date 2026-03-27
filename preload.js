@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('api', {
   closeWindow: () => ipcRenderer.invoke('close-window'),
   setWindowSize: (size) => ipcRenderer.invoke('set-window-size', size),
   setIgnoreMouse: (ignore) => ipcRenderer.invoke('set-ignore-mouse', ignore),
+  isMouseInWindow: () => ipcRenderer.invoke('is-mouse-in-window'),
   startDrag: () => ipcRenderer.invoke('start-drag'),
   moveWindow: (offset) => ipcRenderer.invoke('move-window', offset),
   loadFilePath: (filePath) => ipcRenderer.invoke('load-file-path', filePath),
