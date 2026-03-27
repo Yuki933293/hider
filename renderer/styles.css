@@ -1464,6 +1464,11 @@ input[type="color"]::-webkit-color-swatch {
   border-color: rgba(255, 255, 255, 0.06) !important;
 }
 
+.dark-theme #mode-switcher { background: rgba(255, 255, 255, 0.06); }
+.dark-theme .mode-btn { color: rgba(255, 255, 255, 0.35); }
+.dark-theme .mode-btn:hover { color: rgba(255, 255, 255, 0.55); }
+.dark-theme .mode-btn.active { background: rgba(255, 255, 255, 0.1); color: rgba(255, 255, 255, 0.7); box-shadow: none; }
+
 .dark-theme .settings-header h3 { color: #e0e0e0; }
 .dark-theme .settings-header { border-color: rgba(255, 255, 255, 0.06); }
 .dark-theme .settings-header button { background: rgba(255, 255, 255, 0.06); color: rgba(255, 255, 255, 0.45); }
