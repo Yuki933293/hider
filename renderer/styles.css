@@ -1471,11 +1471,13 @@ input[type="color"]::-webkit-color-swatch {
 
 #app.text-only-mode #reader-content {
   padding: 4px 8px;
+  overflow: hidden;
 }
 
 #app.text-only-mode #placeholder {
   padding: 4px 8px;
 }
+
 
 /* ============ Dark theme ============ */
 .dark-theme {

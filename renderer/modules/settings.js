@@ -321,6 +321,15 @@ export function applySettings() {
   dom.app.classList.toggle('hover-mode', !!state.settings.hoverMode);
   dom.app.classList.toggle('text-only-mode', !!state.settings.textOnly);
 
+  // Inject/remove CSS to hide webview scrollbars in text-only mode
+  if (state.settings.textOnly) {
+    dom.webview.insertCSS('::-webkit-scrollbar { display: none !important; } html, body { scrollbar-width: none !important; overflow: -moz-scrollbars-none; }')
+      .then(key => { state._textOnlyCssKey = key; }).catch(() => {});
+  } else if (state._textOnlyCssKey) {
+    dom.webview.removeInsertedCSS(state._textOnlyCssKey).catch(() => {});
+    state._textOnlyCssKey = null;
+  }
+
   if (!state.settings.hoverMode) {
     dom.webview.style.opacity = state.settings.fontOpacity;
   } else {
