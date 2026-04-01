@@ -17,7 +17,7 @@ const defaultPresets = [
     hoverMode: false, visibleLines: 0, autoHideOnLeave: false, hideBg: false, fontSize: 14, lineHeight: 1.6 },
 ];
 
-const presetKeys = ['fontSize', 'fontColor', 'fontOpacity', 'lineHeight', 'bgColor', 'bgOpacity', 'hoverMode', 'visibleLines', 'autoHideOnLeave', 'hideBg'];
+const presetKeys = ['fontSize', 'fontColor', 'fontOpacity', 'lineHeight', 'bgColor', 'bgOpacity', 'hoverMode', 'visibleLines', 'autoHideOnLeave', 'hideBg', 'textOnly'];
 
 // ============ Preset Initialization ============
 export function ensureDefaultPresets() {
@@ -72,6 +72,7 @@ export function initSettings() {
     hoverMode: document.getElementById('set-hover-mode'),
     visibleLines: document.getElementById('set-visible-lines'),
     hideBg: document.getElementById('set-hide-bg'),
+    textOnly: document.getElementById('set-text-only'),
     alwaysOnTop: document.getElementById('set-always-on-top'),
   };
 
@@ -157,6 +158,13 @@ export function initSettings() {
 
   controls.hideBg.addEventListener('change', (e) => {
     state.settings.hideBg = e.target.checked;
+    markPresetDirty();
+    applySettings();
+    debounceSave();
+  });
+
+  controls.textOnly.addEventListener('change', (e) => {
+    state.settings.textOnly = e.target.checked;
     markPresetDirty();
     applySettings();
     debounceSave();
@@ -311,6 +319,7 @@ export function applySettings() {
   }
 
   dom.app.classList.toggle('hover-mode', !!state.settings.hoverMode);
+  dom.app.classList.toggle('text-only-mode', !!state.settings.textOnly);
 
   if (!state.settings.hoverMode) {
     dom.webview.style.opacity = state.settings.fontOpacity;
@@ -355,6 +364,7 @@ export function syncControlsToSettings() {
   document.getElementById('val-visible-lines').textContent =
     state.settings.visibleLines > 0 ? `${state.settings.visibleLines} 行` : '全部';
   controls.hideBg.checked = state.settings.hideBg;
+  controls.textOnly.checked = state.settings.textOnly;
   controls.alwaysOnTop.checked = state.settings.alwaysOnTop;
 
   const toggleBtn = document.getElementById('set-toggle-hotkey');

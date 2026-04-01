@@ -23,6 +23,7 @@ let settings = {
   visibleLines: 0,
   autoHideOnLeave: false,
   hideBg: false,
+  textOnly: false,
   toggleHotkey: 'CommandOrControl+Shift+H',
   bossHotkey: 'CommandOrControl+Shift+X',
   proLicenseKey: '',

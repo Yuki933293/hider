@@ -46,6 +46,13 @@ function toggleSettings() {
   document.getElementById('btn-settings').classList.toggle('active', !dom.settingsPanel.classList.contains('hidden'));
 }
 
+// Right-click to open settings (essential in text-only mode where titlebar is hidden)
+document.addEventListener('contextmenu', (e) => {
+  if (e.target.closest('#settings-panel, webview')) return;
+  e.preventDefault();
+  toggleSettings();
+});
+
 // ============ Keyboard Shortcuts ============
 document.addEventListener('keydown', (e) => {
   // Hotkey recording takes priority

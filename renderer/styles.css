@@ -1458,6 +1458,25 @@ input[type="color"]::-webkit-color-swatch {
   opacity: 1 !important;
 }
 
+/* ============ Text-only mode (pure floating text, no UI chrome) ============ */
+#app.text-only-mode {
+  border-radius: 0;
+}
+
+#app.text-only-mode #titlebar,
+#app.text-only-mode #url-bar,
+#app.text-only-mode #progress-bar {
+  display: none !important;
+}
+
+#app.text-only-mode #reader-content {
+  padding: 4px 8px;
+}
+
+#app.text-only-mode #placeholder {
+  padding: 4px 8px;
+}
+
 /* ============ Dark theme ============ */
 .dark-theme {
   background: rgba(28, 28, 35, 0.97) !important;
