@@ -33,4 +33,7 @@ contextBridge.exposeInMainWorld('api', {
   onSettingsLoaded: (callback) => {
     ipcRenderer.on('settings-loaded', (event, data) => callback(data));
   },
+  onToggleSettings: (callback) => {
+    ipcRenderer.on('toggle-settings', () => callback());
+  },
 });

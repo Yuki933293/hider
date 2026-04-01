@@ -26,6 +26,7 @@ let settings = {
   textOnly: false,
   toggleHotkey: 'CommandOrControl+Shift+H',
   bossHotkey: 'CommandOrControl+Shift+X',
+  settingsHotkey: 'CommandOrControl+Shift+S',
   proLicenseKey: '',
   siteRules: {},
 };
@@ -519,6 +520,15 @@ function registerShortcuts() {
     globalShortcut.register(settings.bossHotkey, () => bossKey());
   } catch (e) {
     console.error('Failed to register boss hotkey:', e);
+  }
+  try {
+    globalShortcut.register(settings.settingsHotkey, () => {
+      if (mainWindow) {
+        mainWindow.webContents.send('toggle-settings');
+      }
+    });
+  } catch (e) {
+    console.error('Failed to register settings hotkey:', e);
   }
 }
 

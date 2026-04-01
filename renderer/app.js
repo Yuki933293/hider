@@ -22,6 +22,8 @@ window.api.onSettingsLoaded((data) => {
   updateSiteRulesUI();
 });
 
+window.api.onToggleSettings(() => toggleSettings());
+
 window.api.onFileLoaded((data) => {
   state.currentFile = data;
   if (state.currentMode !== 'file') {
