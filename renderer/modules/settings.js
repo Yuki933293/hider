@@ -1,6 +1,7 @@
 // Settings panel, presets, hotkeys, applySettings
 import { state, dom, hexToRgb, isColorDark, formatHotkey } from './state.js';
 import { updateVisibleLines, updateProgress, convertReadingPosition, applyReaderMode, toggleReaderMode, getSiteRule, getCurrentHostname, isBuiltinSite } from './content.js';
+import { syncHoverMode } from './hover.js';
 
 let controls = {};
 let valueDisplays = {};
@@ -59,6 +60,47 @@ export function markPresetDirty() {
   if (state.activePreset == null) return;
   state.isPresetDirty = true;
   renderCustomPresets();
+}
+
+function syncAlwaysOnTopUi() {
+  if (controls.alwaysOnTop) {
+    controls.alwaysOnTop.checked = !!state.settings.alwaysOnTop;
+  }
+  if (dom.btnPin) {
+    dom.btnPin.classList.toggle('active', !!state.settings.alwaysOnTop);
+    dom.btnPin.setAttribute('aria-pressed', state.settings.alwaysOnTop ? 'true' : 'false');
+    dom.btnPin.title = state.settings.alwaysOnTop ? '取消置顶' : '置顶窗口';
+  }
+}
+
+export async function setAlwaysOnTop(enabled, { persist = true } = {}) {
+  const previousValue = !!state.settings.alwaysOnTop;
+  const nextValue = !!enabled;
+
+  state.settings.alwaysOnTop = nextValue;
+  syncAlwaysOnTopUi();
+
+  if (!persist) return nextValue;
+
+  try {
+    const confirmed = await window.api.setAlwaysOnTop(nextValue);
+    state.settings.alwaysOnTop = !!confirmed;
+  } catch (error) {
+    console.error('Failed to update always-on-top:', error);
+    state.settings.alwaysOnTop = previousValue;
+  }
+
+  syncAlwaysOnTopUi();
+  return state.settings.alwaysOnTop;
+}
+
+export function toggleAlwaysOnTop() {
+  return setAlwaysOnTop(!state.settings.alwaysOnTop);
+}
+
+export function applyExternalAlwaysOnTop(enabled) {
+  state.settings.alwaysOnTop = !!enabled;
+  syncAlwaysOnTopUi();
 }
 
 export function initSettings() {
@@ -171,9 +213,7 @@ export function initSettings() {
   });
 
   controls.alwaysOnTop.addEventListener('change', (e) => {
-    state.settings.alwaysOnTop = e.target.checked;
-    markPresetDirty();
-    debounceSave();
+    setAlwaysOnTop(e.target.checked);
   });
 
   // ============ Tab navigation ============
@@ -354,6 +394,8 @@ export function applySettings() {
       dom.readerContent.style.display = '';
     }
   }
+
+  syncHoverMode();
 }
 
 // ============ Sync Controls ============
@@ -374,7 +416,7 @@ export function syncControlsToSettings() {
     state.settings.visibleLines > 0 ? `${state.settings.visibleLines} 行` : '全部';
   controls.hideBg.checked = state.settings.hideBg;
   controls.textOnly.checked = state.settings.textOnly;
-  controls.alwaysOnTop.checked = state.settings.alwaysOnTop;
+  syncAlwaysOnTopUi();
 
   const toggleBtn = document.getElementById('set-toggle-hotkey');
   const bossBtn = document.getElementById('set-boss-hotkey');

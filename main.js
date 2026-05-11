@@ -10,6 +10,12 @@ let settingsPath;
 let progressPath;
 let bookmarksPath;
 let recentFilesPath;
+let hoverWindowState = {
+  hoverMode: false,
+  forceInteractive: false,
+  interactive: true,
+};
+let hoverPollTimer = null;
 
 let settings = {
   fontSize: 16,
@@ -322,6 +328,98 @@ function htmlToText(html) {
     .trim();
 }
 
+function applyWindowZOrder({ alwaysOnTop = settings.alwaysOnTop, hoverMode = hoverWindowState.hoverMode, interactive = hoverWindowState.interactive } = {}) {
+  if (!mainWindow) return;
+
+  const clickThrough = hoverMode && !interactive;
+
+  mainWindow.setIgnoreMouseEvents(clickThrough, { forward: true });
+  mainWindow.setAlwaysOnTop(alwaysOnTop, alwaysOnTop ? 'screen-saver' : 'normal');
+}
+
+function emitHoverStateChanged() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.send('hover-state-changed', {
+    interactive: hoverWindowState.interactive,
+  });
+}
+
+function emitAlwaysOnTopChanged() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.send('always-on-top-changed', settings.alwaysOnTop);
+}
+
+function getHoverWindowSnapshot() {
+  return {
+    hoverMode: hoverWindowState.hoverMode,
+    forceInteractive: hoverWindowState.forceInteractive,
+    interactive: hoverWindowState.interactive,
+  };
+}
+
+function isCursorInsideWindow() {
+  if (!mainWindow) return false;
+  const { x, y } = screen.getCursorScreenPoint();
+  const bounds = mainWindow.getBounds();
+  return x >= bounds.x && x <= bounds.x + bounds.width &&
+         y >= bounds.y && y <= bounds.y + bounds.height;
+}
+
+function computeHoverInteractive() {
+  if (!hoverWindowState.hoverMode || !isVisible) return true;
+  if (hoverWindowState.forceInteractive) return true;
+  return isCursorInsideWindow();
+}
+
+function stopHoverTracking() {
+  if (!hoverPollTimer) return;
+  clearInterval(hoverPollTimer);
+  hoverPollTimer = null;
+}
+
+function syncHoverWindowState() {
+  if (!mainWindow) return getHoverWindowSnapshot();
+
+  const nextInteractive = computeHoverInteractive();
+  const interactiveChanged = nextInteractive !== hoverWindowState.interactive;
+  hoverWindowState.interactive = nextInteractive;
+
+  applyWindowZOrder({
+    alwaysOnTop: settings.alwaysOnTop,
+    hoverMode: hoverWindowState.hoverMode,
+    interactive: hoverWindowState.interactive,
+  });
+
+  if (interactiveChanged) {
+    emitHoverStateChanged();
+  }
+
+  return getHoverWindowSnapshot();
+}
+
+function startHoverTracking() {
+  if (hoverPollTimer || !hoverWindowState.hoverMode) return;
+  hoverPollTimer = setInterval(() => {
+    syncHoverWindowState();
+  }, 150);
+}
+
+function setAlwaysOnTopSetting(enabled) {
+  const nextValue = !!enabled;
+  if (settings.alwaysOnTop === nextValue) return settings.alwaysOnTop;
+
+  settings.alwaysOnTop = nextValue;
+  applyWindowZOrder({
+    alwaysOnTop: settings.alwaysOnTop,
+    hoverMode: hoverWindowState.hoverMode,
+    interactive: hoverWindowState.interactive,
+  });
+  saveSettings();
+  refreshTrayMenu();
+  emitAlwaysOnTopChanged();
+  return settings.alwaysOnTop;
+}
+
 function createWindow() {
   const workArea = screen.getPrimaryDisplay().workAreaSize;
   let winWidth = 800, winHeight = 600, winX, winY;
@@ -367,9 +465,11 @@ function createWindow() {
     },
   });
 
-  if (settings.alwaysOnTop) {
-    mainWindow.setAlwaysOnTop(true, 'screen-saver');
-  }
+  applyWindowZOrder({
+    alwaysOnTop: settings.alwaysOnTop,
+    hoverMode: hoverWindowState.hoverMode,
+    interactive: hoverWindowState.interactive,
+  });
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
   // Intercept new windows from webview: navigate in-place instead of opening new window
@@ -394,15 +494,13 @@ function createWindow() {
   mainWindow.on('move', saveBounds);
 
   mainWindow.on('closed', () => {
+    stopHoverTracking();
     mainWindow = null;
   });
 }
 
-function createTray() {
-  const iconPath = path.join(__dirname, 'img/icon.png');
-  const icon = nativeImage.createFromPath(iconPath);
-
-  tray = new Tray(process.platform === 'darwin' ? icon.resize({ width: 16, height: 16 }) : icon);
+function refreshTrayMenu() {
+  if (!tray || tray.isDestroyed()) return;
 
   const contextMenu = Menu.buildFromTemplate([
     { label: '显示/隐藏', click: () => toggleVisibility() },
@@ -413,17 +511,23 @@ function createTray() {
       type: 'checkbox',
       checked: settings.alwaysOnTop,
       click: (item) => {
-        settings.alwaysOnTop = item.checked;
-        mainWindow?.setAlwaysOnTop(item.checked, 'screen-saver');
-        saveSettings();
+        setAlwaysOnTopSetting(item.checked);
       },
     },
     { type: 'separator' },
     { label: '退出', click: () => app.quit() },
   ]);
 
-  tray.setToolTip('Hider - 摸鱼阅读器');
   tray.setContextMenu(contextMenu);
+}
+
+function createTray() {
+  const iconPath = path.join(__dirname, 'img/icon.png');
+  const icon = nativeImage.createFromPath(iconPath);
+
+  tray = new Tray(process.platform === 'darwin' ? icon.resize({ width: 16, height: 16 }) : icon);
+  tray.setToolTip('Hider - 摸鱼阅读器');
+  refreshTrayMenu();
   tray.on('click', () => toggleVisibility());
 }
 
@@ -583,6 +687,7 @@ if (!gotTheLock) {
 }
 
 app.on('will-quit', () => {
+  stopHoverTracking();
   globalShortcut.unregisterAll();
 });
 
@@ -594,10 +699,17 @@ ipcMain.handle('open-file', async () => {
 ipcMain.handle('get-settings', () => settings);
 
 ipcMain.handle('save-settings', (event, newSettings) => {
+  const previousAlwaysOnTop = settings.alwaysOnTop;
   settings = { ...settings, ...newSettings };
   saveSettings();
-  if (mainWindow) {
-    mainWindow.setAlwaysOnTop(settings.alwaysOnTop, 'screen-saver');
+  applyWindowZOrder({
+    alwaysOnTop: settings.alwaysOnTop,
+    hoverMode: hoverWindowState.hoverMode,
+    interactive: hoverWindowState.interactive,
+  });
+  if (previousAlwaysOnTop !== settings.alwaysOnTop) {
+    refreshTrayMenu();
+    emitAlwaysOnTopChanged();
   }
   registerShortcuts();
   return settings;
@@ -621,8 +733,18 @@ ipcMain.handle('get-window-bounds', () => {
   return mainWindow?.getBounds();
 });
 
-ipcMain.handle('set-ignore-mouse', (event, ignore) => {
-  mainWindow?.setIgnoreMouseEvents(ignore, { forward: true });
+ipcMain.handle('set-always-on-top', (event, enabled) => {
+  return setAlwaysOnTopSetting(enabled);
+});
+
+ipcMain.handle('update-hover-window', (event, nextState) => {
+  hoverWindowState = { ...hoverWindowState, ...nextState };
+  if (hoverWindowState.hoverMode) {
+    startHoverTracking();
+  } else {
+    stopHoverTracking();
+  }
+  return syncHoverWindowState();
 });
 
 ipcMain.handle('is-mouse-in-window', () => {

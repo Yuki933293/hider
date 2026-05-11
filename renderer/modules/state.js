@@ -40,6 +40,7 @@ export function initDom() {
   dom.bookmarksList = document.getElementById('bookmarks-list');
   dom.bookmarksEmpty = document.getElementById('bookmarks-empty');
   dom.btnOpen = document.getElementById('btn-open');
+  dom.btnPin = document.getElementById('btn-pin');
   dom.btnBookmark = document.getElementById('btn-bookmark');
   dom.btnBookmarksList = document.getElementById('btn-bookmarks-list');
   dom.btnCloseFile = document.getElementById('btn-close-file');

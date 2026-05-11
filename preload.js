@@ -6,10 +6,11 @@ contextBridge.exposeInMainWorld('api', {
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
   saveProgress: (data) => ipcRenderer.invoke('save-progress', data),
   toggleVisibility: () => ipcRenderer.invoke('toggle-visibility'),
+  setAlwaysOnTop: (enabled) => ipcRenderer.invoke('set-always-on-top', enabled),
   minimizeWindow: () => ipcRenderer.invoke('minimize-window'),
   closeWindow: () => ipcRenderer.invoke('close-window'),
   setWindowSize: (size) => ipcRenderer.invoke('set-window-size', size),
-  setIgnoreMouse: (ignore) => ipcRenderer.invoke('set-ignore-mouse', ignore),
+  updateHoverWindow: (state) => ipcRenderer.invoke('update-hover-window', state),
   isMouseInWindow: () => ipcRenderer.invoke('is-mouse-in-window'),
   startDrag: () => ipcRenderer.invoke('start-drag'),
   moveWindow: (offset) => ipcRenderer.invoke('move-window', offset),
@@ -32,6 +33,12 @@ contextBridge.exposeInMainWorld('api', {
   },
   onSettingsLoaded: (callback) => {
     ipcRenderer.on('settings-loaded', (event, data) => callback(data));
+  },
+  onHoverStateChanged: (callback) => {
+    ipcRenderer.on('hover-state-changed', (event, data) => callback(data));
+  },
+  onAlwaysOnTopChanged: (callback) => {
+    ipcRenderer.on('always-on-top-changed', (event, enabled) => callback(enabled));
   },
   onToggleSettings: (callback) => {
     ipcRenderer.on('toggle-settings', () => callback());

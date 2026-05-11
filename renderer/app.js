@@ -1,12 +1,14 @@
 // Entry point — imports modules and wires up top-level events
 import { state, dom, initDom } from './modules/state.js';
 import { initContent, switchMode, showContent, closeFile, navigateLine } from './modules/content.js';
-import { initSettings, applySettings, syncControlsToSettings, renderCustomPresets, ensureDefaultPresets, restoreActivePreset, handleHotkeyRecording, cancelRecordingIfOutside, debounceSave, markPresetDirty, updateProStatus, updateProFeatureUI, updateSiteRulesUI } from './modules/settings.js';
+import { initSettings, applySettings, syncControlsToSettings, renderCustomPresets, ensureDefaultPresets, restoreActivePreset, handleHotkeyRecording, cancelRecordingIfOutside, debounceSave, markPresetDirty, updateProStatus, updateProFeatureUI, updateSiteRulesUI, toggleAlwaysOnTop, applyExternalAlwaysOnTop } from './modules/settings.js';
+import { initHoverController, setHoverDragging } from './modules/hover.js';
 
 // ============ Initialize ============
 initDom();
 initContent();
 initSettings();
+initHoverController();
 
 // ============ IPC Events ============
 window.api.onSettingsLoaded((data) => {
@@ -23,6 +25,9 @@ window.api.onSettingsLoaded((data) => {
 });
 
 window.api.onToggleSettings(() => toggleSettings());
+window.api.onAlwaysOnTopChanged((enabled) => {
+  applyExternalAlwaysOnTop(enabled);
+});
 
 window.api.onFileLoaded((data) => {
   state.currentFile = data;
@@ -34,6 +39,7 @@ window.api.onFileLoaded((data) => {
 
 // ============ Titlebar Buttons ============
 dom.btnOpen.addEventListener('click', () => window.api.openFile());
+dom.btnPin.addEventListener('click', () => toggleAlwaysOnTop());
 dom.btnCloseFile.addEventListener('click', closeFile);
 document.getElementById('btn-settings').addEventListener('click', toggleSettings);
 document.getElementById('btn-minimize').addEventListener('click', () => window.api.minimizeWindow());
@@ -174,58 +180,6 @@ document.addEventListener('drop', (e) => {
   }
 });
 
-// ============ Mouse Tracking (hover mode + auto-hide) ============
-let mouseOverApp = false;
-let hoverPollInterval = null;
-
-function showWindow() {
-  if (mouseOverApp) return;
-  mouseOverApp = true;
-  dom.app.classList.add('mouse-over');
-  if (state.settings.autoHideOnLeave) {
-    dom.app.classList.remove('auto-hidden');
-  }
-  startHoverPoll();
-}
-
-function hideWindow() {
-  mouseOverApp = false;
-  stopHoverPoll();
-  dom.app.classList.remove('mouse-over');
-  if (state.settings.autoHideOnLeave) {
-    dom.app.classList.add('auto-hidden');
-  }
-}
-
-// Poll mouse position via IPC to reliably detect when mouse leaves window
-// This works regardless of webview stealing events
-function startHoverPoll() {
-  stopHoverPoll();
-  if (!state.settings.hoverMode) return;
-  hoverPollInterval = setInterval(async () => {
-    const inside = await window.api.isMouseInWindow();
-    if (!inside && mouseOverApp) {
-      hideWindow();
-    }
-  }, 200);
-}
-
-function stopHoverPoll() {
-  if (hoverPollInterval) {
-    clearInterval(hoverPollInterval);
-    hoverPollInterval = null;
-  }
-}
-
-// Entry detection: document events + overlay for webview area
-document.addEventListener('mouseenter', showWindow);
-document.addEventListener('mousemove', () => {
-  if (!mouseOverApp) showWindow();
-});
-
-const webviewOverlay = document.getElementById('webview-hover-overlay');
-webviewOverlay.addEventListener('mouseenter', showWindow);
-
 // ============ Manual Window Drag ============
 let isDragging = false;
 let dragOffsetX = 0;
@@ -237,6 +191,7 @@ document.addEventListener('mousedown', async (e) => {
   const result = await window.api.startDrag();
   if (!result) return;
   isDragging = true;
+  setHoverDragging(true);
   dragOffsetX = result.mouseX - result.winX;
   dragOffsetY = result.mouseY - result.winY;
   document.body.style.cursor = 'grabbing';
@@ -250,6 +205,7 @@ document.addEventListener('mousemove', () => {
 document.addEventListener('mouseup', () => {
   if (isDragging) {
     isDragging = false;
+    setHoverDragging(false);
     document.body.style.cursor = '';
   }
 });

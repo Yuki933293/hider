@@ -131,6 +131,20 @@ button, .hotkey-input, .toggle, .tab-btn {
   color: var(--accent);
 }
 
+#btn-pin svg {
+  transform: rotate(25deg);
+}
+
+#btn-pin.active {
+  background: var(--accent-light);
+  color: var(--accent) !important;
+}
+
+#btn-pin.active:hover {
+  background: rgba(59, 130, 246, 0.18);
+  color: #2563eb !important;
+}
+
 #btn-close:hover {
   background: rgba(255, 59, 48, 0.85) !important;
   color: white !important;
