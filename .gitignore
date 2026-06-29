@@ -5,3 +5,5 @@ dist/
 .DS_Store
 Thumbs.db
 *.bak
+CLAUDE.md
+ROADMAP.md
