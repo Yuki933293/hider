@@ -1,6 +1,6 @@
 {
   "name": "hider",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Stealth novel reader - read discreetly with transparent overlay",
   "main": "main.js",
   "repository": {
@@ -34,7 +34,10 @@
   "build": {
     "appId": "com.hider.reader",
     "productName": "Hider",
-    "electronLanguages": ["zh-CN", "en-US"],
+    "electronLanguages": [
+      "zh-CN",
+      "en-US"
+    ],
     "mac": {
       "category": "public.app-category.books",
       "identity": null,
