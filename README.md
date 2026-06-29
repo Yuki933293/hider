@@ -3,63 +3,43 @@
 
   <h1>Hider</h1>
 
-  <p><strong>A discreet desktop reader for quiet, local-first reading.</strong></p>
-  <p>透明悬浮、沉浸纯文字、本地文件与网页阅读合一的隐身阅读器。</p>
+  <p><strong>一个低可见度、透明悬浮、本地优先的桌面阅读器。</strong></p>
+  <p>
+    <strong>中文</strong>
+    ·
+    <a href="README.en.md">English</a>
+  </p>
 
   <p>
     <a href="https://github.com/Yuki933293/hider"><img alt="GitHub repo" src="https://img.shields.io/badge/GitHub-hider-181717?logo=github" /></a>
     <img alt="Electron" src="https://img.shields.io/badge/Electron-33-47848F?logo=electron&logoColor=white" />
-    <img alt="Platform" src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-blue" />
+    <img alt="Platform" src="https://img.shields.io/badge/macOS%20%7C%20Windows-supported-blue" />
     <img alt="License" src="https://img.shields.io/badge/license-ISC-green" />
   </p>
 </div>
 
 ---
 
-## Overview
+Hider 是一个面向安静阅读场景的桌面应用。它可以把小说、文档或网页内容以透明悬浮窗口的形式显示在桌面上，也可以进入只保留文字的沉浸模式，让阅读界面尽可能轻、稳、低打扰。
 
-Hider is a stealth-oriented novel and document reader built with Electron. It focuses on a low-visibility reading experience: transparent floating windows, shortcut-driven control, local file reading, web reader cleanup, and an independent immersive mode that can show only the text itself.
+## 功能亮点
 
-Hider 是一个偏「偷闲阅读」场景的桌面阅读器。它不是传统电子书管理器，而是一个可悬浮、可透明、可快速隐藏、可进入无边界沉浸文字模式的轻量工具。
+- **透明悬浮阅读**：窗口透明度、字体、字号、行高、颜色和置顶状态都可以按需调整。
+- **沉浸文字模式**：隐藏标题栏、按钮、进度条等控件，只显示可滚动的纯文字。
+- **本地文件阅读**：支持打开本地 `.txt`、`.md`、`.text` 和 `.epub` 文件，并恢复上次阅读进度。
+- **智能目录跳转**：自动识别章节标题，支持在本地文件中快速切换章节。
+- **网页阅读清洗**：通过内置 WebView 打开网页，并提取正文内容用于更干净的阅读。
+- **快捷键控制**：支持全局显示/隐藏、老板键、设置面板和沉浸模式快捷键。
+- **阅读预设**：保存常用窗口尺寸、透明度、字体样式、行数和沉浸模式配置。
 
-## Highlights
+## 适合场景
 
-| Feature | Description |
-| --- | --- |
-| Immersive Mode | Hide all app chrome and show only floating text with configurable lines, font size, color, opacity, and line height. |
-| Local Reader | Open `.txt`, `.md`, `.text`, and `.epub` files with progress restore and recent files. |
-| Smart TOC | Detect TXT/Markdown/EPUB-like chapter headings and jump across chapters quickly. |
-| Web Reader | Browse web pages, extract readable content, and apply site-specific reader rules. |
-| Stealth Controls | Global shortcuts, boss key, hover mode, always-on-top, transparent background, and text-only display. |
-| Presets | Save window size, typography, opacity, hover behavior, visible line count, and immersive settings as presets. |
+- 在桌面上保留一个低存在感的文字窗口。
+- 阅读本地小说、笔记、Markdown 或 EPUB 文本。
+- 将网页正文提取成更干净的阅读内容。
+- 需要快速隐藏、恢复、调整透明度和切换显示状态的轻量阅读场景。
 
-## Screens And Modes
-
-Hider is designed around several reading surfaces:
-
-- **File Mode**: local text / Markdown / EPUB reading.
-- **Web Mode**: built-in webview with reader-mode extraction and site rules.
-- **Line-Limited Mode**: show only a fixed number of lines for compact reading.
-- **Independent Immersive Mode**: borderless text-only scrolling, no titlebar, no progress bar, no visible controls.
-
-## Keyboard Shortcuts
-
-| Shortcut | Action |
-| --- | --- |
-| `Ctrl/Cmd + Shift + H` | Show / hide Hider |
-| `Ctrl/Cmd + Shift + X` | Boss key |
-| `Ctrl/Cmd + Shift + S` | Open settings |
-| `Ctrl/Cmd + Shift + F` | Toggle immersive mode |
-| `Ctrl/Cmd + O` | Open file in immersive mode |
-| `Esc` | Exit immersive mode / close settings |
-| `Ctrl/Cmd + + / -` | Adjust font size |
-| `Space / PageDown` | Scroll down |
-| `PageUp` | Scroll up |
-| `ArrowUp / ArrowDown` | Move in line-limited reading |
-
-Shortcuts are configurable in the settings panel. Hider also reports shortcut conflicts when a key combination is already used by Hider, the OS, or another app.
-
-## Quick Start
+## 快速开始
 
 ```bash
 git clone https://github.com/Yuki933293/hider.git
@@ -68,7 +48,7 @@ npm install
 npm start
 ```
 
-Build distributables:
+构建本地安装包：
 
 ```bash
 npm run build
@@ -76,42 +56,38 @@ npm run build:mac
 npm run build:win
 ```
 
-## Project Structure
+## 常用快捷键
 
-```text
-main.js                    Electron main process, IPC, file loading, shortcuts
-preload.js                 Safe renderer bridge
-renderer/app.js            Renderer entry and top-level interactions
-renderer/modules/state.js  Shared state and DOM references
-renderer/modules/content.js
-                           File/web content, TOC, progress, reader mode
-renderer/modules/settings.js
-                           Settings, presets, shortcuts, Pro UI
-renderer/modules/hover.js  Hover/click-through window behavior
-renderer/adapters/         Site adapter experiments
-scripts/                   Icon, license, notarization helpers
-ROADMAP.md                 Product and engineering roadmap
-```
+| 快捷键 | 功能 |
+| --- | --- |
+| `Ctrl/Cmd + Shift + H` | 显示或隐藏 Hider |
+| `Ctrl/Cmd + Shift + X` | 老板键 |
+| `Ctrl/Cmd + Shift + S` | 打开设置 |
+| `Ctrl/Cmd + Shift + F` | 切换沉浸模式 |
+| `Ctrl/Cmd + O` | 打开本地文件 |
+| `Esc` | 退出沉浸模式或关闭设置 |
+| `Ctrl/Cmd + + / -` | 调整字体大小 |
+| `Space / PageDown` | 向下滚动 |
+| `PageUp` | 向上滚动 |
+| `ArrowUp / ArrowDown` | 在固定行数模式中逐行移动 |
 
-## Roadmap
+快捷键可以在设置中修改。若快捷键被系统或其它应用占用，Hider 会在设置界面提示注册失败或冲突状态。
 
-Current focus:
+## 阅读模式
 
-- Improve immersive-mode text selection without exposing visible drag handles.
-- Continue stabilizing hover / click-through / window interaction states.
-- Expand local-first backup, export, and migration.
-- Improve web reader extraction and site rule coverage.
-- Explore a reusable presence-gate architecture for continuous privacy protection.
+| 模式 | 说明 |
+| --- | --- |
+| 本地文件模式 | 打开本地文本文件，支持进度恢复和目录跳转。 |
+| 网页模式 | 使用内置 WebView 访问网页，并提取适合阅读的正文。 |
+| 固定行数模式 | 只显示指定行数，适合小窗口悬浮阅读。 |
+| 沉浸模式 | 隐藏所有可见控件，只保留文字、滚动和快捷键操作。 |
 
-See [ROADMAP.md](ROADMAP.md) for the full plan.
+## 隐私说明
 
-## Design Principles
+Hider 默认以本地优先的方式工作。阅读进度、最近文件、快捷键和样式配置保存在本机应用数据目录中，不需要账号，也不会主动上传本地阅读内容。
 
-- **Low visibility first**: controls should stay quiet and shortcuts should be fast.
-- **Local-first reading**: files, progress, and settings should work without accounts or cloud services.
-- **Small surface, useful depth**: the first screen should be usable, but power users can tune typography, opacity, shortcuts, presets, and reader rules.
-- **Explicit tradeoffs**: stealth interactions sometimes conflict with normal editor behavior; Hider favors discreet reading by default while leaving room for configurable escape hatches.
+网页模式会访问用户打开的网站；网页内容提取仅用于当前阅读界面展示。
 
-## License
+## 许可证
 
-ISC
+本项目基于 ISC License 发布。
