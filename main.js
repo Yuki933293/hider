@@ -1,7 +1,10 @@
-const { app, BrowserWindow, globalShortcut, ipcMain, dialog, Tray, Menu, nativeImage, screen } = require('electron');
+const { app, BrowserWindow, globalShortcut, ipcMain, dialog, Tray, Menu, nativeImage, screen, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
+const { fileURLToPath } = require('url');
 const AdmZip = require('adm-zip');
+const packageJson = require('./package.json');
 
 let mainWindow = null;
 let tray = null;
@@ -10,6 +13,7 @@ let settingsPath;
 let progressPath;
 let bookmarksPath;
 let recentFilesPath;
+let updateDownloadDir;
 let hoverWindowState = {
   hoverMode: false,
   forceInteractive: false,
@@ -46,6 +50,7 @@ let settings = {
   bossHotkey: 'CommandOrControl+Shift+X',
   settingsHotkey: 'CommandOrControl+Shift+S',
   immersiveHotkey: 'CommandOrControl+Shift+F',
+  updateAutoCheck: true,
   proLicenseKey: '',
   siteRules: {},
 };
@@ -136,6 +141,340 @@ function normalizeFilePath(filePath) {
   } catch {
     return path.resolve(filePath);
   }
+}
+
+function normalizeVersion(value) {
+  return String(value || '').trim().replace(/^v/i, '').replace(/[+].*$/, '').replace(/-.+$/, '');
+}
+
+function compareVersions(a, b) {
+  const left = normalizeVersion(a).split('.').map(n => parseInt(n, 10) || 0);
+  const right = normalizeVersion(b).split('.').map(n => parseInt(n, 10) || 0);
+  const len = Math.max(left.length, right.length, 3);
+  for (let i = 0; i < len; i++) {
+    if ((left[i] || 0) > (right[i] || 0)) return 1;
+    if ((left[i] || 0) < (right[i] || 0)) return -1;
+  }
+  return 0;
+}
+
+function getUpdateConfig() {
+  const local = packageJson.hider?.update || {};
+  return {
+    provider: local.provider || 'github',
+    owner: process.env.HIDER_UPDATE_OWNER || local.owner || 'Yuki933293',
+    repo: process.env.HIDER_UPDATE_REPO || local.repo || 'hider',
+    manifest: process.env.HIDER_UPDATE_MANIFEST ||
+      process.env.HIDER_UPDATE_MANIFEST_URL ||
+      process.env.HIDER_UPDATE_MANIFEST_FILE ||
+      '',
+  };
+}
+
+function getAppInfo() {
+  return {
+    name: app.getName(),
+    version: app.getVersion(),
+    platform: process.platform,
+    arch: process.arch,
+    updateAutoCheck: settings.updateAutoCheck !== false,
+    updateSource: getUpdateConfig().manifest ? 'manifest' : 'github',
+  };
+}
+
+function cleanReleaseLine(line) {
+  return String(line || '')
+    .replace(/^\s*#{1,6}\s*/, '')
+    .replace(/^\s*[-*]\s+/, '')
+    .replace(/^\s*\d+[.)]\s+/, '')
+    .replace(/\*\*/g, '')
+    .replace(/`/g, '')
+    .trim();
+}
+
+function extractReleaseNotes(body) {
+  const notes = [];
+  String(body || '').split(/\r?\n/).forEach((line) => {
+    const text = cleanReleaseLine(line);
+    if (!text || /^https?:\/\//i.test(text)) return;
+    if (/^(changes|changelog|full changelog|更新日志|what'?s changed)$/i.test(text)) return;
+    notes.push(text.slice(0, 160));
+  });
+  return notes.slice(0, 8);
+}
+
+function updateAssetNameFromUrl(value) {
+  try {
+    const u = new URL(String(value || ''));
+    return path.basename(decodeURIComponent(u.pathname || ''));
+  } catch {
+    return path.basename(String(value || '').split('?')[0]);
+  }
+}
+
+function normalizeDigest(value, algorithm = 'sha256') {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  return raw.replace(new RegExp(`^${algorithm}:`, 'i'), '').trim().replace(/^['"]|['"]$/g, '');
+}
+
+function normalizeReleaseAsset(asset = {}) {
+  const downloadUrl = asset.downloadUrl || asset.browser_download_url || asset.url || '';
+  const digest = String(asset.digest || '');
+  return {
+    name: asset.name || updateAssetNameFromUrl(downloadUrl),
+    size: Number(asset.size || 0) || 0,
+    contentType: asset.contentType || asset.content_type || '',
+    downloadUrl,
+    sha256: normalizeDigest(asset.sha256 || (/^sha256:/i.test(digest) ? digest : ''), 'sha256').toLowerCase(),
+    sha512: normalizeDigest(asset.sha512 || (/^sha512:/i.test(digest) ? digest : ''), 'sha512'),
+  };
+}
+
+function isUpdateAssetForPlatform(asset) {
+  const name = String(asset?.name || '').toLowerCase();
+  if (!name || /\.(blockmap|ya?ml|json|txt|sha256|sha512)$/i.test(name)) return false;
+  if (process.platform === 'darwin') return /\.(dmg|zip)$/i.test(name);
+  if (process.platform === 'win32') return /\.(exe|msi)$/i.test(name);
+  return /\.(appimage|deb|rpm|tar\.gz)$/i.test(name);
+}
+
+function platformAssetScore(asset) {
+  const name = String(asset?.name || '').toLowerCase();
+  const arch = process.arch.toLowerCase();
+  let score = 0;
+  if (process.platform === 'darwin') {
+    if (name.endsWith('.dmg')) score += 30;
+    if (name.endsWith('.zip')) score += 20;
+    if (arch === 'arm64' && /arm64|aarch64/.test(name)) score += 10;
+    if (arch === 'x64' && /(x64|x86_64|amd64)/.test(name)) score += 10;
+  } else if (process.platform === 'win32') {
+    if (name.endsWith('.exe')) score += 30;
+    if (name.endsWith('.msi')) score += 20;
+    if (/(setup|installer)/.test(name)) score += 10;
+    if (arch === 'x64' && /(x64|x86_64|amd64)/.test(name)) score += 8;
+  }
+  if (/hider/i.test(name)) score += 5;
+  return score;
+}
+
+function pickPlatformAsset(assets) {
+  return (Array.isArray(assets) ? assets : [])
+    .map(normalizeReleaseAsset)
+    .filter(asset => asset.downloadUrl && isUpdateAssetForPlatform(asset))
+    .sort((a, b) => platformAssetScore(b) - platformAssetScore(a))[0] || null;
+}
+
+function normalizeManifestUpdateInfo(data) {
+  const release = data?.release || {};
+  const latestVersion = normalizeVersion(
+    data?.latestVersion || data?.version || release.version || release.tagName || release.tag_name || release.name
+  ) || app.getVersion();
+  const asset = release.asset || data?.asset || pickPlatformAsset(data?.assets || release.assets || []);
+  const normalizedAsset = asset ? normalizeReleaseAsset(asset) : null;
+  const notes = Array.isArray(release.notes) ? release.notes.map(cleanReleaseLine).filter(Boolean)
+    : extractReleaseNotes(release.body || data?.body);
+  return {
+    ok: true,
+    configured: true,
+    source: 'manifest',
+    currentVersion: app.getVersion(),
+    latestVersion,
+    updateAvailable: data?.updateAvailable != null
+      ? !!data.updateAvailable
+      : compareVersions(latestVersion, app.getVersion()) > 0,
+    release: {
+      tagName: release.tagName || release.tag_name || data?.tagName || `v${latestVersion}`,
+      name: release.name || data?.name || `Hider v${latestVersion}`,
+      version: latestVersion,
+      publishedAt: release.publishedAt || release.published_at || data?.publishedAt || '',
+      htmlUrl: release.htmlUrl || release.html_url || data?.htmlUrl || '',
+      summary: release.summary || data?.summary || notes[0] || '发现新版本。',
+      notes: notes.slice(0, 8),
+      asset: normalizedAsset,
+      downloadUrl: normalizedAsset?.downloadUrl || '',
+    },
+  };
+}
+
+async function readUpdateManifest(ref) {
+  const value = String(ref || '').trim();
+  if (!value) throw new Error('HIDER_UPDATE_MANIFEST 未配置');
+  if (/^https?:\/\//i.test(value)) {
+    const resp = await fetch(value, { headers: { 'User-Agent': `Hider/${app.getVersion()}` } });
+    if (!resp.ok) throw new Error(`Manifest 请求失败：HTTP ${resp.status}`);
+    return resp.json();
+  }
+  const file = /^file:/i.test(value) ? fileURLToPath(value) : path.resolve(value);
+  return JSON.parse(fs.readFileSync(file, 'utf8'));
+}
+
+async function checkForUpdates() {
+  const config = getUpdateConfig();
+  if (config.manifest) {
+    return normalizeManifestUpdateInfo(await readUpdateManifest(config.manifest));
+  }
+
+  if (!config.owner || !config.repo || config.provider !== 'github') {
+    return {
+      ok: false,
+      configured: false,
+      currentVersion: app.getVersion(),
+      latestVersion: app.getVersion(),
+      updateAvailable: false,
+      error: '更新仓库未配置',
+    };
+  }
+
+  const apiUrl = `https://api.github.com/repos/${encodeURIComponent(config.owner)}/${encodeURIComponent(config.repo)}/releases/latest`;
+  const resp = await fetch(apiUrl, {
+    headers: {
+      'User-Agent': `Hider/${app.getVersion()}`,
+      'Accept': 'application/vnd.github+json',
+    },
+  });
+  if (!resp.ok) {
+    return {
+      ok: false,
+      configured: true,
+      source: 'github',
+      currentVersion: app.getVersion(),
+      latestVersion: app.getVersion(),
+      updateAvailable: false,
+      error: resp.status === 404 ? '还没有可用的 GitHub Release' : `GitHub Release 请求失败：HTTP ${resp.status}`,
+    };
+  }
+
+  const data = await resp.json();
+  const latestVersion = normalizeVersion(data.tag_name || data.name || app.getVersion()) || app.getVersion();
+  const asset = pickPlatformAsset(data.assets);
+  const notes = extractReleaseNotes(data.body);
+  return {
+    ok: true,
+    configured: true,
+    source: 'github',
+    currentVersion: app.getVersion(),
+    latestVersion,
+    updateAvailable: compareVersions(latestVersion, app.getVersion()) > 0,
+    release: {
+      tagName: data.tag_name || `v${latestVersion}`,
+      name: data.name || `Hider v${latestVersion}`,
+      version: latestVersion,
+      publishedAt: data.published_at || '',
+      htmlUrl: data.html_url || '',
+      summary: notes[0] || (compareVersions(latestVersion, app.getVersion()) > 0 ? '发现新版本。' : '当前已经是最新版本。'),
+      notes,
+      asset,
+      downloadUrl: asset?.downloadUrl || '',
+    },
+  };
+}
+
+function safeUpdateFileName(name, version) {
+  const raw = String(name || '').trim() || `Hider-${version || app.getVersion()}-${process.platform}.${process.platform === 'win32' ? 'exe' : 'dmg'}`;
+  return raw.replace(/[<>:"/\\|?*\x00-\x1F]/g, '-').replace(/\s+/g, ' ').trim().slice(0, 160);
+}
+
+function sha256Hex(filePath) {
+  return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
+}
+
+function verifyDownloadedUpdate(filePath, asset) {
+  const stat = fs.statSync(filePath);
+  if (asset.size && stat.size !== asset.size) {
+    throw new Error(`下载文件大小不一致：期望 ${asset.size}，实际 ${stat.size}`);
+  }
+  if (asset.sha256) {
+    const actual = sha256Hex(filePath);
+    if (actual !== asset.sha256) {
+      throw new Error('下载文件 SHA256 校验失败');
+    }
+  }
+}
+
+function sendUpdateProgress(payload) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('update-download-progress', payload);
+  }
+}
+
+async function downloadUpdate() {
+  const info = await checkForUpdates();
+  const asset = info.release?.asset;
+  if (!info.ok) throw new Error(info.error || '更新检测失败');
+  if (!info.updateAvailable) throw new Error('当前已经是最新版本');
+  if (!asset?.downloadUrl) throw new Error('这个版本没有适合当前系统的安装包');
+
+  fs.mkdirSync(updateDownloadDir, { recursive: true });
+  const fileName = safeUpdateFileName(asset.name, info.latestVersion);
+  const filePath = path.join(updateDownloadDir, fileName);
+  const tmpPath = `${filePath}.download`;
+
+  try {
+    const cached = fs.existsSync(filePath);
+    if (cached && (asset.size || asset.sha256)) {
+      verifyDownloadedUpdate(filePath, asset);
+      sendUpdateProgress({ status: 'ready', progress: 100, fileName, filePath, cached: true });
+      return { ok: true, status: 'ready', progress: 100, fileName, filePath, cached: true, update: info };
+    } else if (cached) {
+      fs.unlinkSync(filePath);
+    }
+  } catch {
+    try { fs.unlinkSync(filePath); } catch (_) {}
+  }
+
+  try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch (_) {}
+  sendUpdateProgress({ status: 'downloading', progress: 0, received: 0, total: asset.size || 0, fileName });
+
+  const resp = await fetch(asset.downloadUrl, {
+    headers: { 'User-Agent': `Hider/${app.getVersion()}` },
+  });
+  if (!resp.ok) throw new Error(`安装包下载失败：HTTP ${resp.status}`);
+
+  const total = parseInt(resp.headers.get('content-length') || '0', 10) || asset.size || 0;
+  const writer = fs.createWriteStream(tmpPath);
+  let received = 0;
+
+  if (!resp.body) throw new Error('下载响应为空');
+  const reader = resp.body.getReader();
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      const buf = Buffer.from(chunk.value);
+      received += buf.length;
+      if (!writer.write(buf)) {
+        await new Promise(resolve => writer.once('drain', resolve));
+      }
+      const progress = total > 0 ? Math.max(1, Math.min(99, Math.round((received / total) * 100))) : 0;
+      sendUpdateProgress({ status: 'downloading', progress, received, total, fileName });
+    }
+  } finally {
+    writer.end();
+    await new Promise((resolve, reject) => {
+      writer.once('finish', resolve);
+      writer.once('error', reject);
+    });
+  }
+
+  verifyDownloadedUpdate(tmpPath, { ...asset, size: asset.size || total });
+  if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  fs.renameSync(tmpPath, filePath);
+  sendUpdateProgress({ status: 'ready', progress: 100, received, total, fileName, filePath, cached: false });
+  return { ok: true, status: 'ready', progress: 100, fileName, filePath, cached: false, update: info };
+}
+
+async function openUpdateInstaller(filePath) {
+  const target = path.resolve(String(filePath || ''));
+  const updateDir = path.resolve(updateDownloadDir);
+  if (!target || !target.startsWith(updateDir + path.sep)) {
+    return { ok: false, error: '更新安装包路径无效' };
+  }
+  if (!fs.existsSync(target)) {
+    return { ok: false, error: '更新安装包不存在' };
+  }
+  const error = await shell.openPath(target);
+  return error ? { ok: false, error } : { ok: true };
 }
 
 function loadBookmarks() {
@@ -761,6 +1100,7 @@ if (!gotTheLock) {
     progressPath = path.join(app.getPath('userData'), 'progress.json');
     bookmarksPath = path.join(app.getPath('userData'), 'bookmarks.json');
     recentFilesPath = path.join(app.getPath('userData'), 'recent-files.json');
+    updateDownloadDir = path.join(app.getPath('userData'), 'updates');
     loadSettings();
     createWindow();
     createTray();
@@ -803,6 +1143,40 @@ ipcMain.handle('open-file', async () => {
 });
 
 ipcMain.handle('get-settings', () => settings);
+
+ipcMain.handle('get-app-info', () => getAppInfo());
+
+ipcMain.handle('check-for-updates', async () => {
+  try {
+    return await checkForUpdates();
+  } catch (e) {
+    return {
+      ok: false,
+      configured: true,
+      currentVersion: app.getVersion(),
+      latestVersion: app.getVersion(),
+      updateAvailable: false,
+      error: e.message || '更新检测失败',
+    };
+  }
+});
+
+ipcMain.handle('download-update', async () => {
+  try {
+    return await downloadUpdate();
+  } catch (e) {
+    sendUpdateProgress({ status: 'error', error: e.message || '更新下载失败' });
+    return { ok: false, error: e.message || '更新下载失败' };
+  }
+});
+
+ipcMain.handle('open-update-installer', async (event, filePath) => {
+  try {
+    return await openUpdateInstaller(filePath);
+  } catch (e) {
+    return { ok: false, error: e.message || '打开安装包失败' };
+  }
+});
 
 ipcMain.handle('save-settings', (event, newSettings) => {
   const previousAlwaysOnTop = settings.alwaysOnTop;

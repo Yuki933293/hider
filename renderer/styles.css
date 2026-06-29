@@ -1311,6 +1311,178 @@ input[type="color"]::-webkit-color-swatch {
   color: var(--accent);
 }
 
+/* ============ About / Update ============ */
+.app-about-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.025);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.app-about-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: rgba(0, 0, 0, 0.72);
+}
+
+.app-about-desc {
+  margin-top: 2px;
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.42);
+}
+
+.app-version {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.08);
+  color: #2563eb;
+  font-size: 11px;
+  font-family: "SF Mono", "Menlo", "Monaco", "Consolas", monospace;
+  white-space: nowrap;
+}
+
+.update-status {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.025);
+  color: rgba(0, 0, 0, 0.52);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.update-status.ok {
+  background: rgba(34, 197, 94, 0.08);
+  color: #15803d;
+}
+
+.update-status.warn {
+  background: rgba(245, 158, 11, 0.1);
+  color: #a16207;
+}
+
+.update-status.error {
+  background: rgba(239, 68, 68, 0.1);
+  color: #b91c1c;
+}
+
+.update-release {
+  margin-top: 8px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(59, 130, 246, 0.12);
+  background: rgba(59, 130, 246, 0.045);
+}
+
+.update-release-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(0, 0, 0, 0.68);
+  margin-bottom: 5px;
+}
+
+.update-release-notes ul {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.update-release-notes li {
+  position: relative;
+  padding-left: 12px;
+  color: rgba(0, 0, 0, 0.54);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.update-release-notes li::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 7px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(59, 130, 246, 0.45);
+}
+
+.update-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.update-progress-bar {
+  flex: 1;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.update-progress-fill {
+  width: 0%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
+#update-progress-text {
+  min-width: 34px;
+  text-align: right;
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.42);
+  font-family: "SF Mono", "Menlo", "Monaco", "Consolas", monospace;
+}
+
+.update-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.update-btn {
+  flex: 1;
+  min-height: 32px;
+  border-radius: 7px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: rgba(0, 0, 0, 0.025);
+  color: rgba(0, 0, 0, 0.58);
+  font-size: 12px;
+  font-weight: 600;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
+}
+
+.update-btn:hover:not(:disabled) {
+  border-color: rgba(59, 130, 246, 0.35);
+  color: var(--accent);
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.update-btn.primary {
+  border-color: rgba(59, 130, 246, 0.2);
+  background: rgba(59, 130, 246, 0.12);
+  color: #2563eb;
+}
+
+.update-btn:disabled {
+  opacity: 0.55;
+}
+
+.update-release.hidden,
+.update-progress.hidden,
+.update-btn.hidden {
+  display: none;
+}
+
 /* ============ Custom Presets ============ */
 .custom-presets-header {
   display: flex;
@@ -1865,6 +2037,56 @@ input[type="color"]::-webkit-color-swatch {
 .dark-theme .help-row kbd { background: rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.08); color: #bbb; box-shadow: none; }
 .dark-theme .help-tips li { color: #999; }
 .dark-theme .help-tips li::before { background: rgba(255, 255, 255, 0.2); }
+.dark-theme .app-about-card {
+  background: rgba(255, 255, 255, 0.035);
+  border-color: rgba(255, 255, 255, 0.07);
+}
+.dark-theme .app-about-title { color: rgba(255, 255, 255, 0.78); }
+.dark-theme .app-about-desc { color: rgba(255, 255, 255, 0.32); }
+.dark-theme .app-version {
+  background: rgba(110, 168, 254, 0.12);
+  color: #93c5fd;
+}
+.dark-theme .update-status {
+  background: rgba(255, 255, 255, 0.035);
+  color: rgba(255, 255, 255, 0.46);
+}
+.dark-theme .update-status.ok {
+  background: rgba(34, 197, 94, 0.12);
+  color: #86efac;
+}
+.dark-theme .update-status.warn {
+  background: rgba(245, 158, 11, 0.13);
+  color: #facc15;
+}
+.dark-theme .update-status.error {
+  background: rgba(239, 68, 68, 0.13);
+  color: #fca5a5;
+}
+.dark-theme .update-release {
+  border-color: rgba(110, 168, 254, 0.14);
+  background: rgba(110, 168, 254, 0.06);
+}
+.dark-theme .update-release-title { color: rgba(255, 255, 255, 0.72); }
+.dark-theme .update-release-notes li { color: rgba(255, 255, 255, 0.48); }
+.dark-theme .update-release-notes li::before { background: rgba(110, 168, 254, 0.5); }
+.dark-theme .update-progress-bar { background: rgba(255, 255, 255, 0.09); }
+.dark-theme #update-progress-text { color: rgba(255, 255, 255, 0.34); }
+.dark-theme .update-btn {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.035);
+  color: rgba(255, 255, 255, 0.5);
+}
+.dark-theme .update-btn:hover:not(:disabled) {
+  border-color: rgba(110, 168, 254, 0.35);
+  color: #93c5fd;
+  background: rgba(110, 168, 254, 0.1);
+}
+.dark-theme .update-btn.primary {
+  border-color: rgba(110, 168, 254, 0.2);
+  background: rgba(110, 168, 254, 0.12);
+  color: #93c5fd;
+}
 
 .dark-theme .btn-reset-presets {
   border-color: rgba(255, 255, 255, 0.08);

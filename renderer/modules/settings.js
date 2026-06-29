@@ -6,6 +6,13 @@ import { syncHoverMode } from './hover.js';
 let controls = {};
 let valueDisplays = {};
 let recordingInput = null;
+let updateUiState = {
+  latestInfo: null,
+  installerPath: '',
+  checking: false,
+  downloading: false,
+};
+let updateAutoCheckScheduled = false;
 
 const defaultPresets = [
   { name: '幽灵', fontColor: '#888888', fontOpacity: 0.15, bgColor: '#000000', bgOpacity: 0,
@@ -168,6 +175,192 @@ export function applyShortcutRegistrationStatus(status = { ok: true, registered:
   warning.classList.remove('hidden');
 }
 
+function getUpdateEls() {
+  return {
+    version: document.getElementById('app-version'),
+    status: document.getElementById('update-status'),
+    release: document.getElementById('update-release'),
+    releaseTitle: document.getElementById('update-release-title'),
+    releaseNotes: document.getElementById('update-release-notes'),
+    progress: document.getElementById('update-progress'),
+    progressFill: document.getElementById('update-progress-fill'),
+    progressText: document.getElementById('update-progress-text'),
+    checkBtn: document.getElementById('btn-check-update'),
+    downloadBtn: document.getElementById('btn-download-update'),
+    openBtn: document.getElementById('btn-open-update-installer'),
+  };
+}
+
+function setUpdateStatus(message, tone = '') {
+  const { status } = getUpdateEls();
+  if (!status) return;
+  status.textContent = message;
+  status.classList.remove('ok', 'warn', 'error');
+  if (tone) status.classList.add(tone);
+}
+
+function setUpdateBusy({ checking = false, downloading = false } = {}) {
+  updateUiState.checking = checking;
+  updateUiState.downloading = downloading;
+  const { checkBtn, downloadBtn, openBtn } = getUpdateEls();
+  if (checkBtn) {
+    checkBtn.disabled = checking || downloading;
+    checkBtn.textContent = checking ? '检查中...' : '检查更新';
+  }
+  if (downloadBtn) {
+    downloadBtn.disabled = checking || downloading;
+    if (downloading) downloadBtn.textContent = '下载中...';
+    else downloadBtn.textContent = '下载新版';
+  }
+  if (openBtn) openBtn.disabled = checking || downloading;
+}
+
+function renderUpdateProgress(payload = {}) {
+  const { progress, progressFill, progressText } = getUpdateEls();
+  if (!progress || !progressFill || !progressText) return;
+  if (payload.status === 'downloading' || payload.status === 'ready') {
+    progress.classList.remove('hidden');
+  }
+  const percent = Math.max(0, Math.min(100, Math.round(Number(payload.progress || 0))));
+  progressFill.style.width = `${percent}%`;
+  progressText.textContent = `${percent}%`;
+}
+
+function renderReleaseInfo(info) {
+  const { release, releaseTitle, releaseNotes, downloadBtn, openBtn } = getUpdateEls();
+  const releaseData = info?.release || {};
+  const notes = Array.isArray(releaseData.notes) ? releaseData.notes.filter(Boolean) : [];
+
+  if (release && releaseTitle && releaseNotes && info?.updateAvailable) {
+    release.classList.remove('hidden');
+    releaseTitle.textContent = releaseData.name || `Hider v${info.latestVersion}`;
+    releaseNotes.replaceChildren();
+    const list = document.createElement('ul');
+    (notes.length ? notes.slice(0, 5) : ['发现新版本，建议更新。']).forEach((note) => {
+      const item = document.createElement('li');
+      item.textContent = note;
+      list.appendChild(item);
+    });
+    releaseNotes.appendChild(list);
+  } else if (release) {
+    release.classList.add('hidden');
+  }
+
+  if (downloadBtn) {
+    downloadBtn.classList.toggle('hidden', !info?.updateAvailable || !releaseData.downloadUrl || !!updateUiState.installerPath);
+  }
+  if (openBtn) {
+    openBtn.classList.toggle('hidden', !updateUiState.installerPath);
+  }
+}
+
+async function refreshAppInfo() {
+  try {
+    const info = await window.api.getAppInfo();
+    const { version } = getUpdateEls();
+    if (version) version.textContent = `v${info.version || '—'}`;
+  } catch (_) {
+    const { version } = getUpdateEls();
+    if (version) version.textContent = 'v—';
+  }
+}
+
+async function checkForUpdates({ manual = false } = {}) {
+  if (updateUiState.checking || updateUiState.downloading) return;
+  setUpdateBusy({ checking: true });
+  if (manual) setUpdateStatus('正在检查更新...');
+  try {
+    const info = await window.api.checkForUpdates();
+    updateUiState.latestInfo = info;
+    updateUiState.installerPath = '';
+    if (!info.ok) {
+      setUpdateStatus(info.error || '更新检测失败', info.error ? 'error' : 'warn');
+    } else if (info.updateAvailable) {
+      const assetName = info.release?.asset?.name ? ` · ${info.release.asset.name}` : '';
+      setUpdateStatus(`发现新版本 v${info.latestVersion}${assetName}`, 'ok');
+    } else {
+      setUpdateStatus(`当前已是最新版本 v${info.currentVersion}`, 'ok');
+    }
+    renderReleaseInfo(info);
+  } catch (e) {
+    setUpdateStatus(e.message || '更新检测失败', 'error');
+  } finally {
+    setUpdateBusy({ checking: false });
+  }
+}
+
+async function downloadLatestUpdate() {
+  if (updateUiState.downloading) return;
+  setUpdateBusy({ downloading: true });
+  setUpdateStatus('正在下载新版安装包...');
+  renderUpdateProgress({ status: 'downloading', progress: 0 });
+  try {
+    const result = await window.api.downloadUpdate();
+    if (!result || result.ok === false) {
+      throw new Error(result?.error || '更新下载失败');
+    }
+    updateUiState.installerPath = result.filePath || '';
+    setUpdateStatus(result.cached ? '已复用本地安装包，准备打开安装。' : '安装包已下载，准备打开安装。', 'ok');
+    renderUpdateProgress({ status: 'ready', progress: 100 });
+    renderReleaseInfo(updateUiState.latestInfo || result.update);
+  } catch (e) {
+    setUpdateStatus(e.message || '更新下载失败', 'error');
+  } finally {
+    setUpdateBusy({ downloading: false });
+  }
+}
+
+async function openDownloadedInstaller() {
+  if (!updateUiState.installerPath) return;
+  const result = await window.api.openUpdateInstaller(updateUiState.installerPath);
+  if (!result || result.ok === false) {
+    setUpdateStatus(result?.error || '无法打开安装包', 'error');
+    return;
+  }
+  setUpdateStatus('安装包已打开，请按系统提示完成安装。', 'ok');
+}
+
+function initUpdateUi() {
+  refreshAppInfo();
+  if (controls.updateAutoCheck) {
+    controls.updateAutoCheck.checked = state.settings.updateAutoCheck !== false;
+    controls.updateAutoCheck.addEventListener('change', (e) => {
+      state.settings.updateAutoCheck = e.target.checked;
+      window.api.saveSettings(state.settings);
+    });
+  }
+
+  const { checkBtn, downloadBtn, openBtn } = getUpdateEls();
+  if (checkBtn) checkBtn.addEventListener('click', () => checkForUpdates({ manual: true }));
+  if (downloadBtn) downloadBtn.addEventListener('click', downloadLatestUpdate);
+  if (openBtn) openBtn.addEventListener('click', openDownloadedInstaller);
+
+  if (window.api.onUpdateDownloadProgress) {
+    window.api.onUpdateDownloadProgress((payload) => {
+      renderUpdateProgress(payload);
+      if (payload.status === 'downloading') {
+        const percent = Math.round(Number(payload.progress || 0));
+        setUpdateStatus(`正在下载新版安装包 ${percent}%`);
+      } else if (payload.status === 'ready') {
+        updateUiState.installerPath = payload.filePath || updateUiState.installerPath;
+        setUpdateStatus(payload.cached ? '已复用本地安装包，准备打开安装。' : '安装包已下载，准备打开安装。', 'ok');
+        renderReleaseInfo(updateUiState.latestInfo);
+      } else if (payload.status === 'error') {
+        setUpdateStatus(payload.error || '更新下载失败', 'error');
+      }
+    });
+  }
+
+}
+
+function scheduleAutoUpdateCheck() {
+  if (updateAutoCheckScheduled || state.settings.updateAutoCheck === false) return;
+  updateAutoCheckScheduled = true;
+  if (getUpdateEls().status?.textContent === '尚未检查更新') {
+    setTimeout(() => checkForUpdates({ manual: false }), 1800);
+  }
+}
+
 // Restore active preset from saved settings on startup
 export function restoreActivePreset() {
   const idx = state.settings.activePresetIndex;
@@ -328,6 +521,7 @@ export function initSettings() {
     immersiveFontOpacity: document.getElementById('set-immersive-font-opacity'),
     immersiveLineHeight: document.getElementById('set-immersive-line-height'),
     alwaysOnTop: document.getElementById('set-always-on-top'),
+    updateAutoCheck: document.getElementById('set-update-auto-check'),
   };
 
   valueDisplays = {
@@ -541,6 +735,7 @@ export function initSettings() {
 
   // ============ Site Rules ============
   initSiteRulesUI();
+  initUpdateUi();
 }
 
 // ============ Apply Settings ============
@@ -700,6 +895,9 @@ export function syncControlsToSettings() {
     state.settings.visibleLines > 0 ? `${state.settings.visibleLines} 行` : '全部';
   controls.hideBg.checked = state.settings.hideBg;
   controls.textOnly.checked = state.settings.textOnly;
+  if (controls.updateAutoCheck) {
+    controls.updateAutoCheck.checked = state.settings.updateAutoCheck !== false;
+  }
   state.settings.immersiveFontSize = state.settings.immersiveFontSize || state.settings.fontSize || 16;
   state.settings.immersiveFontColor = state.settings.immersiveFontColor || state.settings.fontColor || '#333333';
   state.settings.immersiveFontOpacity = state.settings.immersiveFontOpacity ?? state.settings.fontOpacity ?? 1;
@@ -724,6 +922,7 @@ export function syncControlsToSettings() {
   if (helpBossHotkey) helpBossHotkey.textContent = formatHotkey(state.settings.bossHotkey);
   if (helpImmersiveHotkey) helpImmersiveHotkey.textContent = formatHotkey(state.settings.immersiveHotkey);
   applyShortcutRegistrationStatus(shortcutRegistrationStatus);
+  scheduleAutoUpdateCheck();
 }
 
 export function debounceSave() {

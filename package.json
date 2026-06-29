@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "description": "Stealth novel reader - read discreetly with transparent overlay",
   "main": "main.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Yuki933293/hider.git"
+  },
   "scripts": {
     "start": "unset ELECTRON_RUN_AS_NODE && electron .",
     "build": "unset ELECTRON_RUN_AS_NODE && electron-builder",
@@ -20,6 +24,13 @@
   "dependencies": {
     "adm-zip": "^0.5.16"
   },
+  "hider": {
+    "update": {
+      "provider": "github",
+      "owner": "Yuki933293",
+      "repo": "hider"
+    }
+  },
   "build": {
     "appId": "com.hider.reader",
     "productName": "Hider",
@@ -32,16 +43,41 @@
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
       "target": [
-        "dmg"
+        "dmg",
+        "zip"
       ]
     },
     "win": {
       "target": [
-        "portable"
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
-      "artifactName": "${productName}-${version}-win-${arch}.${ext}"
+      "artifactName": "${productName}-${version}-Setup-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Hider"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Yuki933293",
+        "repo": "hider"
+      }
+    ],
+    "dmg": {
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
     "files": [
+      "package.json",
       "main.js",
       "preload.js",
       "renderer/**/*",

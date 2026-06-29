@@ -39,7 +39,14 @@ Hider is a desktop reader designed for quiet, low-distraction reading. It can di
 - Turn web pages into cleaner reading content.
 - Quickly hide, restore, resize, and restyle a lightweight reading surface.
 
-## Quick Start
+## Download And Run
+
+The recommended path is to download a packaged release from [GitHub Releases](https://github.com/Yuki933293/hider/releases):
+
+- macOS: download the `.dmg` and drag Hider into Applications.
+- Windows: download `Hider-*-Setup-x64.exe` and follow the installer.
+
+You can also run Hider from source:
 
 ```bash
 git clone https://github.com/Yuki933293/hider.git
@@ -55,6 +62,8 @@ npm run build
 npm run build:mac
 npm run build:win
 ```
+
+The in-app "About and Updates" area checks the latest GitHub Release and downloads the installer for the current platform when a newer version is available.
 
 ## Shortcuts
 

@@ -3,6 +3,10 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('api', {
   openFile: () => ipcRenderer.invoke('open-file'),
   getSettings: () => ipcRenderer.invoke('get-settings'),
+  getAppInfo: () => ipcRenderer.invoke('get-app-info'),
+  checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  downloadUpdate: () => ipcRenderer.invoke('download-update'),
+  openUpdateInstaller: (filePath) => ipcRenderer.invoke('open-update-installer', filePath),
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
   saveProgress: (data) => ipcRenderer.invoke('save-progress', data),
   saveProgressSync: (data) => ipcRenderer.sendSync('save-progress-sync', data),
@@ -49,5 +53,10 @@ contextBridge.exposeInMainWorld('api', {
   },
   onShortcutRegistrationResult: (callback) => {
     ipcRenderer.on('shortcuts-registration-result', (event, data) => callback(data));
+  },
+  onUpdateDownloadProgress: (callback) => {
+    const listener = (event, data) => callback(data);
+    ipcRenderer.on('update-download-progress', listener);
+    return () => ipcRenderer.removeListener('update-download-progress', listener);
   },
 });
