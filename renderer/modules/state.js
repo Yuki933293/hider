@@ -11,6 +11,8 @@ export const state = {
   readerModeEnabled: false,
   readerCssKey: null,
   progressSaveTimeout: null,
+  toc: [],
+  pendingScrollLineIndex: null,
   extractedFromWeb: false,
   extractNextChapterUrl: null,  // URL for auto-loading next chapter
   autoLoadingNext: false,       // prevent double-loading
@@ -39,10 +41,15 @@ export function initDom() {
   dom.bookmarksDropdown = document.getElementById('bookmarks-dropdown');
   dom.bookmarksList = document.getElementById('bookmarks-list');
   dom.bookmarksEmpty = document.getElementById('bookmarks-empty');
+  dom.tocDropdown = document.getElementById('toc-dropdown');
+  dom.tocList = document.getElementById('toc-list');
+  dom.tocEmpty = document.getElementById('toc-empty');
   dom.btnOpen = document.getElementById('btn-open');
   dom.btnPin = document.getElementById('btn-pin');
+  dom.btnImmersive = document.getElementById('btn-immersive');
   dom.btnBookmark = document.getElementById('btn-bookmark');
   dom.btnBookmarksList = document.getElementById('btn-bookmarks-list');
+  dom.btnToc = document.getElementById('btn-toc');
   dom.btnCloseFile = document.getElementById('btn-close-file');
   dom.btnBackToWeb = document.getElementById('btn-back-to-web');
   dom.btnExtractRead = document.getElementById('btn-extract-read');

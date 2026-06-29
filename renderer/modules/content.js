@@ -132,6 +132,14 @@ export function isBuiltinSite(hostname) {
   return !!BUILTIN_SITE_RULES[hostname];
 }
 
+export function isImmersiveFileMode() {
+  return state.currentMode === 'file' && !!state.settings.immersiveMode;
+}
+
+export function isLineLimitedMode() {
+  return state.currentMode === 'file' && state.settings.visibleLines > 0 && !isImmersiveFileMode();
+}
+
 export function initContent() {
   // Mode switch buttons
   document.querySelectorAll('.mode-btn').forEach((btn) => {
@@ -153,6 +161,8 @@ export function initContent() {
 
   // Extract read button
   dom.btnExtractRead.addEventListener('click', () => extractAndRead());
+
+  dom.btnToc.addEventListener('click', () => toggleTocDropdown());
 
   // Back to web button
   dom.btnBackToWeb.addEventListener('click', () => {
@@ -272,7 +282,7 @@ export function initContent() {
 
       // Auto-load next chapter when near bottom (extract mode, normal scroll)
       if (state.extractedFromWeb && state.extractNextChapterUrl && !state.autoLoadingNext
-          && state.settings.visibleLines === 0) {
+          && !isLineLimitedMode()) {
         const el = dom.readerContent;
         const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 300;
         if (nearBottom) {
@@ -310,6 +320,8 @@ export function switchMode(mode) {
   }
 
   if (mode === 'web') {
+    hideTocDropdown();
+    dom.btnToc.classList.add('hidden');
     dom.urlBar.classList.remove('hidden');
     dom.readerContent.style.display = 'none';
     dom.singleLineOverlay.classList.add('hidden');
@@ -333,12 +345,17 @@ export function switchMode(mode) {
 
     if (state.currentFile) {
       dom.readerContent.style.display = '';
-      if (state.settings.visibleLines > 0) {
+      if (isLineLimitedMode()) {
         dom.singleLineOverlay.classList.remove('hidden');
         dom.readerContent.style.display = 'none';
+      } else {
+        dom.singleLineOverlay.classList.add('hidden');
       }
+      dom.btnToc.classList.toggle('hidden', state.toc.length === 0);
       dom.titleFilename.textContent = state.currentFile.name;
     } else {
+      dom.btnToc.classList.add('hidden');
+      hideTocDropdown();
       dom.readerContent.style.display = '';
       dom.titleFilename.textContent = 'Hider - 拖入文件或点击文件夹图标打开';
     }
@@ -560,9 +577,12 @@ function navigateToUrl(input) {
 }
 
 export function closeFile() {
+  saveCurrentProgressNow();
   state.currentFile = null;
   state.lines = [];
+  state.toc = [];
   state.currentLineIndex = 0;
+  state.pendingScrollLineIndex = null;
   state.extractedFromWeb = false;
   state.extractNextChapterUrl = null;
   state.autoLoadingNext = false;
@@ -577,11 +597,255 @@ export function closeFile() {
   dom.singleLineText.innerHTML = '';
   dom.readerContent.style.display = '';
   dom.readerContent.scrollTop = 0;
+  dom.app.classList.toggle('immersive-empty', isImmersiveFileMode());
+  dom.btnToc.classList.add('hidden');
+  dom.tocDropdown.classList.add('hidden');
+  dom.tocList.innerHTML = '';
+  dom.tocEmpty.classList.remove('show');
   dom.btnCloseFile.classList.add('hidden');
   dom.btnBackToWeb.classList.add('hidden');
   dom.titleFilename.textContent = 'Hider - 拖入文件或点击文件夹图标打开';
   dom.progressFill.style.width = '0%';
   renderRecentFiles();
+}
+
+function afterReaderLayout(callback) {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(callback);
+  });
+}
+
+function clampReadingLineIndex(lineIndex) {
+  const maxIndex = Math.max(0, state.lines.length - 1);
+  const value = Number(lineIndex) || 0;
+  return Math.max(0, Math.min(value, maxIndex));
+}
+
+function getScrollLineIndex() {
+  const el = dom.readerContent;
+  const scrollHeight = el.scrollHeight - el.clientHeight;
+  const ratio = scrollHeight > 0 ? el.scrollTop / scrollHeight : 0;
+  return Math.round(ratio * Math.max(state.lines.length - 1, 0));
+}
+
+export function getCurrentReadingLineIndex() {
+  if (Number.isFinite(state.pendingScrollLineIndex)) {
+    return clampReadingLineIndex(state.pendingScrollLineIndex);
+  }
+  if (isLineLimitedMode()) {
+    return clampReadingLineIndex(state.currentLineIndex);
+  }
+  return clampReadingLineIndex(getScrollLineIndex());
+}
+
+export function scrollReaderToLineIndex(lineIndex, { save = true } = {}) {
+  const targetLineIndex = clampReadingLineIndex(lineIndex);
+  state.currentLineIndex = targetLineIndex;
+  state.pendingScrollLineIndex = targetLineIndex;
+
+  afterReaderLayout(() => {
+    const el = dom.readerContent;
+    const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
+    const ratio = targetLineIndex / Math.max(state.lines.length - 1, 1);
+    el.scrollTop = Math.round(ratio * maxScrollTop);
+    state.pendingScrollLineIndex = null;
+    updateProgress();
+    if (save) {
+      saveCurrentProgressNow();
+    }
+  });
+}
+
+export function setLineLimitedPosition(lineIndex, { save = true } = {}) {
+  const maxIndex = Math.max(0, state.lines.length - (state.settings.visibleLines || 1));
+  state.currentLineIndex = Math.max(0, Math.min(clampReadingLineIndex(lineIndex), maxIndex));
+  updateVisibleLines();
+  updateProgress();
+  if (save) {
+    saveCurrentProgressNow();
+  }
+}
+
+function restoreScrollPosition(saved) {
+  afterReaderLayout(() => {
+    const el = dom.readerContent;
+    const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
+    let nextScrollTop = 0;
+
+    if (typeof saved === 'number') {
+      nextScrollTop = saved;
+    } else if (saved?.type === 'scroll') {
+      const value = Number(saved.value) || 0;
+      const percent = Number(saved.percent);
+      if (value > 0) {
+        nextScrollTop = value;
+      } else if (Number.isFinite(percent) && percent > 0) {
+        nextScrollTop = Math.round(percent * maxScrollTop);
+      }
+    } else if (Number.isFinite(Number(saved?.percent))) {
+      nextScrollTop = Math.round(Number(saved.percent) * maxScrollTop);
+    }
+
+    el.scrollTop = Math.max(0, Math.min(nextScrollTop, maxScrollTop));
+    updateProgress();
+  });
+}
+
+function restoreLinePosition(saved) {
+  const maxIndex = Math.max(0, state.lines.length - (state.settings.visibleLines || 1));
+
+  if (saved?.type === 'lines') {
+    state.currentLineIndex = Math.max(0, Math.min(Number(saved.value) || 0, maxIndex));
+    return;
+  }
+
+  const percent = Number(saved?.percent);
+  if (Number.isFinite(percent)) {
+    state.currentLineIndex = Math.max(0, Math.min(Math.round(percent * (state.lines.length - 1)), maxIndex));
+  }
+}
+
+function normalizeTocTitle(title) {
+  return (title || '')
+    .replace(/^#{1,6}\s*/, '')
+    .replace(/^[\s\-*·•]+/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function stripHtmlToText(html) {
+  const div = document.createElement('div');
+  div.innerHTML = html || '';
+  return (div.textContent || '').trim();
+}
+
+function isLikelyChapterTitle(line) {
+  const text = normalizeTocTitle(line);
+  if (!text || text.length > 80) return false;
+
+  return (
+    /^第[\d一二三四五六七八九十百千万零〇两壹贰叁肆伍陆柒捌玖拾佰仟]+[章节卷回部集篇].{0,50}$/.test(text) ||
+    /^(正文\s*)?第[\d一二三四五六七八九十百千万零〇两]+[章回].{0,50}$/.test(text) ||
+    /^(chapter|section|part|volume|book)\s+[\divxlcdm]+[\s:：.-].{0,60}$/i.test(text) ||
+    /^#{1,6}\s+\S+/.test(line)
+  );
+}
+
+function addTocEntry(entries, title, lineIndex) {
+  const normalized = normalizeTocTitle(title);
+  if (!normalized) return;
+  if (entries.some(item => item.lineIndex === lineIndex || item.title === normalized)) return;
+  entries.push({ title: normalized, lineIndex });
+}
+
+function buildPlainTextToc(lines) {
+  const entries = [];
+
+  lines.forEach((line, index) => {
+    const text = String(line || '').trim();
+    const next = String(lines[index + 1] || '').trim();
+
+    if (/^[─\-_=]{6,}$/.test(text) && next) {
+      addTocEntry(entries, next, index + 1);
+      return;
+    }
+
+    if (isLikelyChapterTitle(text)) {
+      addTocEntry(entries, text, index);
+    }
+  });
+
+  return entries;
+}
+
+function buildHtmlToc(blocks) {
+  return (blocks || []).reduce((entries, block, index) => {
+    if (typeof block !== 'string') return entries;
+    if (/^<h[1-6][\s>]/i.test(block.trim())) {
+      addTocEntry(entries, stripHtmlToText(block), index);
+    }
+    return entries;
+  }, []);
+}
+
+function buildToc(data) {
+  if (data.contentType === 'html') {
+    return buildHtmlToc(data.blocks || []);
+  }
+  return buildPlainTextToc(state.lines);
+}
+
+function renderToc() {
+  dom.tocList.innerHTML = '';
+  dom.tocEmpty.classList.toggle('show', state.toc.length === 0);
+  dom.btnToc.classList.toggle('hidden', state.toc.length === 0);
+  dom.tocDropdown.classList.add('hidden');
+
+  state.toc.forEach((item, index) => {
+    const entry = document.createElement('button');
+    entry.className = 'toc-item';
+    entry.type = 'button';
+    entry.dataset.index = String(index);
+    entry.innerHTML = `
+      <span class="toc-item-title">${escapeHtml(item.title)}</span>
+      <span class="toc-item-pos">${Math.round((item.lineIndex / Math.max(state.lines.length - 1, 1)) * 100)}%</span>
+    `;
+    entry.addEventListener('click', () => jumpToTocEntry(index));
+    dom.tocList.appendChild(entry);
+  });
+}
+
+function toggleTocDropdown() {
+  if (state.toc.length === 0) return;
+  const willShow = dom.tocDropdown.classList.contains('hidden');
+  dom.tocDropdown.classList.toggle('hidden', !willShow);
+  dom.btnToc.classList.toggle('active', willShow);
+  if (willShow) updateTocActive();
+}
+
+function hideTocDropdown() {
+  dom.tocDropdown.classList.add('hidden');
+  dom.btnToc.classList.remove('active');
+}
+
+function getApproxCurrentLineIndex() {
+  return getCurrentReadingLineIndex();
+}
+
+function updateTocActive() {
+  if (!state.toc.length || !dom.tocList) return;
+  const currentLine = getApproxCurrentLineIndex();
+  let activeIndex = 0;
+
+  state.toc.forEach((item, index) => {
+    if (item.lineIndex <= currentLine) activeIndex = index;
+  });
+
+  dom.tocList.querySelectorAll('.toc-item').forEach((item, index) => {
+    item.classList.toggle('active', index === activeIndex);
+  });
+}
+
+function jumpToTocEntry(index) {
+  const item = state.toc[index];
+  if (!item) return;
+
+  saveCurrentProgressNow();
+  const targetLineIndex = clampReadingLineIndex(item.lineIndex);
+  state.currentLineIndex = targetLineIndex;
+
+  if (isLineLimitedMode()) {
+    setLineLimitedPosition(targetLineIndex);
+    hideTocDropdown();
+    return;
+  }
+
+  scrollReaderToLineIndex(targetLineIndex);
+  hideTocDropdown();
+}
+
+export function closeTocDropdown() {
+  hideTocDropdown();
 }
 
 // ============ Content Display ============
@@ -601,49 +865,25 @@ export function showContent(data) {
 
   dom.titleFilename.textContent = data.name;
   dom.btnCloseFile.classList.remove('hidden');
+  dom.app.classList.remove('immersive-empty');
   state.currentLineIndex = 0;
+  state.toc = buildToc(data);
+  renderToc();
 
   const saved = data.scrollPosition;
   if (saved) {
-    if (typeof saved === 'number') {
-      if (state.settings.visibleLines > 0) {
-        // Can't convert bare scrollTop to lineIndex reliably
-      } else {
-        requestAnimationFrame(() => {
-          dom.readerContent.scrollTop = saved;
-          updateProgress();
-        });
-      }
-    } else if (typeof saved === 'object') {
-      if (state.settings.visibleLines > 0) {
-        if (saved.type === 'lines') {
-          const maxIndex = Math.max(0, state.lines.length - (state.settings.visibleLines || 1));
-          state.currentLineIndex = Math.min(saved.value, maxIndex);
-        } else {
-          const maxIndex = Math.max(0, state.lines.length - (state.settings.visibleLines || 1));
-          state.currentLineIndex = Math.min(Math.round(saved.percent * (state.lines.length - 1)), maxIndex);
-        }
-      } else {
-        if (saved.type === 'scroll') {
-          requestAnimationFrame(() => {
-            dom.readerContent.scrollTop = saved.value;
-            updateProgress();
-          });
-        } else {
-          requestAnimationFrame(() => {
-            const scrollHeight = dom.readerContent.scrollHeight - dom.readerContent.clientHeight;
-            dom.readerContent.scrollTop = Math.round(saved.percent * scrollHeight);
-            updateProgress();
-          });
-        }
-      }
+    if (isLineLimitedMode()) {
+      restoreLinePosition(saved);
+    } else {
+      restoreScrollPosition(saved);
     }
   }
 
-  if (state.settings.visibleLines > 0) {
+  if (isLineLimitedMode()) {
     updateVisibleLines();
     updateProgress();
   }
+  updateTocActive();
 }
 
 export function navigateLine(direction) {
@@ -652,6 +892,7 @@ export function navigateLine(direction) {
   updateVisibleLines();
   updateProgress();
   debounceSaveProgress();
+  updateTocActive();
 
   // Auto-load next chapter when near end (extract mode, single-line mode)
   if (state.extractedFromWeb && state.extractNextChapterUrl && !state.autoLoadingNext) {
@@ -679,7 +920,7 @@ export function updateVisibleLines() {
 
 export function updateProgress() {
   let progress = 0;
-  if (state.settings.visibleLines > 0 && state.lines.length > 1) {
+  if (isLineLimitedMode() && state.lines.length > 1) {
     progress = (state.currentLineIndex / (state.lines.length - 1)) * 100;
   } else {
     const el = dom.readerContent;
@@ -687,13 +928,14 @@ export function updateProgress() {
     progress = scrollHeight > 0 ? (el.scrollTop / scrollHeight) * 100 : 0;
   }
   dom.progressFill.style.width = `${progress}%`;
+  updateTocActive();
 }
 
 export function convertReadingPosition(oldVisibleLines, callback) {
   if (!state.currentFile || state.lines.length === 0) { callback(); return; }
   if (oldVisibleLines === state.settings.visibleLines) { callback(); return; }
 
-  if (oldVisibleLines === 0 && state.settings.visibleLines > 0) {
+  if (!isImmersiveFileMode() && oldVisibleLines === 0 && state.settings.visibleLines > 0) {
     const scrollHeight = dom.readerContent.scrollHeight - dom.readerContent.clientHeight;
     if (scrollHeight > 0) {
       const ratio = dom.readerContent.scrollTop / scrollHeight;
@@ -701,7 +943,7 @@ export function convertReadingPosition(oldVisibleLines, callback) {
       state.currentLineIndex = Math.min(Math.round(ratio * (state.lines.length - 1)), maxIndex);
     }
     callback();
-  } else if (oldVisibleLines > 0 && state.settings.visibleLines === 0) {
+  } else if (!isImmersiveFileMode() && oldVisibleLines > 0 && state.settings.visibleLines === 0) {
     const ratio = state.lines.length > 1 ? state.currentLineIndex / (state.lines.length - 1) : 0;
     callback();
     requestAnimationFrame(() => {
@@ -710,7 +952,7 @@ export function convertReadingPosition(oldVisibleLines, callback) {
       updateProgress();
     });
   } else {
-    if (state.settings.visibleLines > 0) {
+    if (isLineLimitedMode()) {
       const maxIndex = Math.max(0, state.lines.length - state.settings.visibleLines);
       if (state.currentLineIndex > maxIndex) state.currentLineIndex = maxIndex;
     }
@@ -718,20 +960,50 @@ export function convertReadingPosition(oldVisibleLines, callback) {
   }
 }
 
+function getCurrentProgressEntry() {
+  if (!state.currentFile) return;
+  if (state.currentMode !== 'file') return;
+
+  if (isLineLimitedMode()) {
+    const percent = state.lines.length > 1 ? state.currentLineIndex / (state.lines.length - 1) : 0;
+    return { type: 'lines', value: state.currentLineIndex, percent, updatedAt: Date.now() };
+  }
+
+  const scrollHeight = dom.readerContent.scrollHeight - dom.readerContent.clientHeight;
+  const percent = scrollHeight > 0 ? dom.readerContent.scrollTop / scrollHeight : 0;
+  return { type: 'scroll', value: dom.readerContent.scrollTop, percent, updatedAt: Date.now() };
+}
+
+export function saveCurrentProgressNow({ sync = false } = {}) {
+  const entry = getCurrentProgressEntry();
+  if (!entry || !state.currentFile?.path) return false;
+
+  if (state.progressSaveTimeout) {
+    clearTimeout(state.progressSaveTimeout);
+    state.progressSaveTimeout = null;
+  }
+
+  const progress = { [state.currentFile.path]: entry };
+
+  if (sync && typeof window.api.saveProgressSync === 'function') {
+    try {
+      window.api.saveProgressSync(progress);
+      return true;
+    } catch (error) {
+      console.error('同步保存阅读进度失败:', error);
+    }
+  }
+
+  window.api.saveProgress(progress);
+  return true;
+}
+
 function debounceSaveProgress() {
   if (!state.currentFile) return;
   if (state.progressSaveTimeout) clearTimeout(state.progressSaveTimeout);
   state.progressSaveTimeout = setTimeout(() => {
-    const progress = {};
-    if (state.settings.visibleLines > 0) {
-      const percent = state.lines.length > 1 ? state.currentLineIndex / (state.lines.length - 1) : 0;
-      progress[state.currentFile.path] = { type: 'lines', value: state.currentLineIndex, percent };
-    } else {
-      const scrollHeight = dom.readerContent.scrollHeight - dom.readerContent.clientHeight;
-      const percent = scrollHeight > 0 ? dom.readerContent.scrollTop / scrollHeight : 0;
-      progress[state.currentFile.path] = { type: 'scroll', value: dom.readerContent.scrollTop, percent };
-    }
-    window.api.saveProgress(progress);
+    state.progressSaveTimeout = null;
+    saveCurrentProgressNow();
   }, 500);
 }
 

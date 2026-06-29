@@ -20,6 +20,16 @@
             <polyline points="15 18 9 12 15 6"></polyline>
           </svg>
         </button>
+        <button id="btn-toc" class="hidden" title="目录">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">
+            <line x1="8" y1="6" x2="21" y2="6"></line>
+            <line x1="8" y1="12" x2="21" y2="12"></line>
+            <line x1="8" y1="18" x2="21" y2="18"></line>
+            <line x1="3" y1="6" x2="3.01" y2="6"></line>
+            <line x1="3" y1="12" x2="3.01" y2="12"></line>
+            <line x1="3" y1="18" x2="3.01" y2="18"></line>
+          </svg>
+        </button>
         <button id="btn-close-file" class="hidden" title="关闭文件">
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -38,6 +48,13 @@
             <path d="M9 3h6"></path>
             <path d="M10 3v5l-3 4v1h10v-1l-3-4V3"></path>
             <path d="M12 13v8"></path>
+          </svg>
+        </button>
+        <button id="btn-immersive" title="沉浸模式" aria-pressed="false">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 8h16"></path>
+            <path d="M7 12h10"></path>
+            <path d="M10 16h4"></path>
           </svg>
         </button>
         <button id="btn-settings" title="设置">
@@ -123,6 +140,12 @@
       <div id="bookmarks-list"></div>
     </div>
 
+    <!-- Local file table of contents -->
+    <div id="toc-dropdown" class="hidden">
+      <div id="toc-empty">未识别到目录</div>
+      <div id="toc-list"></div>
+    </div>
+
     <div id="reader-container">
       <div id="reader-content">
         <div id="placeholder">
@@ -135,6 +158,7 @@
           <p>拖入文件或点击文件夹图标打开</p>
           <p class="shortcut-hint">支持格式：.txt .md .epub</p>
           <p class="shortcut-hint">显隐切换：Ctrl+Shift+H | 老板键：Ctrl+Shift+X</p>
+          <p class="shortcut-hint immersive-hint">沉浸模式：Ctrl+O 打开文件 | Esc 退出</p>
           <div id="recent-files"></div>
         </div>
         <div id="text-content"></div>
@@ -273,8 +297,9 @@
             </div>
             <div class="setting-row">
               <label>颜色</label>
-              <div class="setting-control">
+              <div class="setting-control color-control">
                 <input type="color" id="set-font-color" value="#333333">
+                <div class="recent-color-row" id="recent-font-colors" aria-label="最近使用的文字颜色"></div>
               </div>
             </div>
             <div class="setting-row">
@@ -338,6 +363,51 @@
               </div>
             </div>
             <div class="setting-row">
+              <label>沉浸模式</label>
+              <div class="setting-control">
+                <label class="toggle">
+                  <input type="checkbox" id="set-immersive-mode">
+                  <span class="toggle-slider"></span>
+                </label>
+                <span class="setting-desc">固定行数自然滚动</span>
+              </div>
+            </div>
+            <div class="setting-row">
+              <label>沉浸行数</label>
+              <div class="setting-control">
+                <input type="range" id="set-immersive-lines" min="1" max="8" step="1" value="3">
+                <span id="val-immersive-lines">3 行</span>
+              </div>
+            </div>
+            <div class="setting-row">
+              <label>沉浸字号</label>
+              <div class="setting-control">
+                <input type="range" id="set-immersive-font-size" min="10" max="32" step="1" value="16">
+                <span id="val-immersive-font-size">16px</span>
+              </div>
+            </div>
+            <div class="setting-row">
+              <label>沉浸颜色</label>
+              <div class="setting-control color-control">
+                <input type="color" id="set-immersive-font-color" value="#333333">
+                <div class="recent-color-row" id="recent-immersive-font-colors" aria-label="最近使用的文字颜色"></div>
+              </div>
+            </div>
+            <div class="setting-row">
+              <label>沉浸透明</label>
+              <div class="setting-control">
+                <input type="range" id="set-immersive-font-opacity" min="0.05" max="1" step="0.05" value="1">
+                <span id="val-immersive-font-opacity">100%</span>
+              </div>
+            </div>
+            <div class="setting-row">
+              <label>沉浸行高</label>
+              <div class="setting-control">
+                <input type="range" id="set-immersive-line-height" min="1.2" max="3" step="0.1" value="1.8">
+                <span id="val-immersive-line-height">1.8</span>
+              </div>
+            </div>
+            <div class="setting-row">
               <label>悬停模式</label>
               <div class="setting-control">
                 <label class="toggle">
@@ -392,10 +462,17 @@
                 <div class="hotkey-input" id="set-settings-hotkey" data-key="settingsHotkey" tabindex="0">Ctrl+Shift+S</div>
               </div>
             </div>
+            <div class="setting-row">
+              <label>沉浸模式</label>
+              <div class="setting-control">
+                <div class="hotkey-input" id="set-immersive-hotkey" data-key="immersiveHotkey" tabindex="0">Ctrl+Shift+F</div>
+              </div>
+            </div>
             <div class="hotkey-footer">
               <p class="hotkey-hint">点击输入框后按下新的快捷键组合</p>
               <button class="hotkey-restore-btn" id="btn-restore-hotkeys">恢复默认</button>
             </div>
+            <div id="hotkey-warning" class="hotkey-warning hidden" role="alert"></div>
           </div>
         </div>
 
@@ -413,8 +490,10 @@
               <div class="help-row"><kbd>PgUp</kbd><span>向上翻页</span></div>
               <div class="help-row"><kbd>上/下 / J/K</kbd><span>精读模式切段</span></div>
               <div class="help-row"><kbd>Ctrl + / -</kbd><span>放大 / 缩小字体</span></div>
-              <div class="help-row"><kbd>Ctrl+Shift+H</kbd><span>显示 / 隐藏窗口</span></div>
-              <div class="help-row"><kbd>Ctrl+Shift+X</kbd><span>老板键</span></div>
+              <div class="help-row"><kbd id="help-toggle-hotkey">Ctrl+Shift+H</kbd><span>显示 / 隐藏窗口</span></div>
+              <div class="help-row"><kbd id="help-boss-hotkey">Ctrl+Shift+X</kbd><span>老板键</span></div>
+              <div class="help-row"><kbd id="help-immersive-hotkey">Ctrl+Shift+F</kbd><span>沉浸模式</span></div>
+              <div class="help-row"><kbd>Ctrl+O</kbd><span>沉浸模式打开文件</span></div>
             </div>
           </div>
 

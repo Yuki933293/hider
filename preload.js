@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('api', {
   getSettings: () => ipcRenderer.invoke('get-settings'),
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
   saveProgress: (data) => ipcRenderer.invoke('save-progress', data),
+  saveProgressSync: (data) => ipcRenderer.sendSync('save-progress-sync', data),
   toggleVisibility: () => ipcRenderer.invoke('toggle-visibility'),
   setAlwaysOnTop: (enabled) => ipcRenderer.invoke('set-always-on-top', enabled),
   minimizeWindow: () => ipcRenderer.invoke('minimize-window'),
@@ -42,5 +43,11 @@ contextBridge.exposeInMainWorld('api', {
   },
   onToggleSettings: (callback) => {
     ipcRenderer.on('toggle-settings', () => callback());
+  },
+  onToggleImmersiveMode: (callback) => {
+    ipcRenderer.on('toggle-immersive-mode', () => callback());
+  },
+  onShortcutRegistrationResult: (callback) => {
+    ipcRenderer.on('shortcuts-registration-result', (event, data) => callback(data));
   },
 });

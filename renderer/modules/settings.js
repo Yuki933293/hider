@@ -1,6 +1,6 @@
 // Settings panel, presets, hotkeys, applySettings
 import { state, dom, hexToRgb, isColorDark, formatHotkey } from './state.js';
-import { updateVisibleLines, updateProgress, convertReadingPosition, applyReaderMode, toggleReaderMode, getSiteRule, getCurrentHostname, isBuiltinSite } from './content.js';
+import { updateVisibleLines, updateProgress, convertReadingPosition, applyReaderMode, toggleReaderMode, getSiteRule, getCurrentHostname, isBuiltinSite, isLineLimitedMode, isImmersiveFileMode, switchMode, getCurrentReadingLineIndex, scrollReaderToLineIndex, setLineLimitedPosition } from './content.js';
 import { syncHoverMode } from './hover.js';
 
 let controls = {};
@@ -18,7 +18,9 @@ const defaultPresets = [
     hoverMode: false, visibleLines: 0, autoHideOnLeave: false, hideBg: false, fontSize: 14, lineHeight: 1.6 },
 ];
 
-const presetKeys = ['fontSize', 'fontColor', 'fontOpacity', 'lineHeight', 'bgColor', 'bgOpacity', 'hoverMode', 'visibleLines', 'autoHideOnLeave', 'hideBg', 'textOnly'];
+const presetKeys = ['fontSize', 'fontColor', 'fontOpacity', 'lineHeight', 'bgColor', 'bgOpacity', 'hoverMode', 'visibleLines', 'autoHideOnLeave', 'hideBg', 'textOnly', 'immersiveMode', 'immersiveLines', 'immersiveFontSize', 'immersiveFontColor', 'immersiveFontOpacity', 'immersiveLineHeight'];
+const maxRecentTextColors = 8;
+let shortcutRegistrationStatus = { ok: true, registered: [], failed: [] };
 
 // ============ Preset Initialization ============
 export function ensureDefaultPresets() {
@@ -42,6 +44,128 @@ function clearActivePreset() {
   state.isPresetDirty = false;
   state.settings.activePresetIndex = null;
   renderCustomPresets();
+}
+
+function normalizeHexColor(color) {
+  if (typeof color !== 'string') return null;
+  const value = color.trim();
+  const shortMatch = value.match(/^#([0-9a-fA-F]{3})$/);
+  if (shortMatch) {
+    return `#${shortMatch[1].split('').map(ch => ch + ch).join('')}`.toLowerCase();
+  }
+  const longMatch = value.match(/^#([0-9a-fA-F]{6})$/);
+  return longMatch ? `#${longMatch[1].toLowerCase()}` : null;
+}
+
+function getRecentTextColors() {
+  const colors = Array.isArray(state.settings.recentTextColors) ? state.settings.recentTextColors : [];
+  const normalized = [];
+  colors.forEach((color) => {
+    const value = normalizeHexColor(color);
+    if (value && !normalized.includes(value)) {
+      normalized.push(value);
+    }
+  });
+  return normalized.slice(0, maxRecentTextColors);
+}
+
+function rememberRecentTextColor(color) {
+  const normalized = normalizeHexColor(color);
+  if (!normalized) return;
+  const colors = getRecentTextColors().filter(item => item !== normalized);
+  state.settings.recentTextColors = [normalized, ...colors].slice(0, maxRecentTextColors);
+  renderRecentTextColors();
+}
+
+function renderRecentTextColorRow(container, colors, activeColor, onSelect) {
+  if (!container) return;
+  container.replaceChildren();
+  const active = normalizeHexColor(activeColor);
+
+  colors.forEach((color) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'recent-color-swatch';
+    btn.style.backgroundColor = color;
+    btn.title = `使用最近颜色 ${color}`;
+    btn.setAttribute('aria-label', `使用最近颜色 ${color}`);
+    btn.classList.toggle('active', color === active);
+    btn.addEventListener('click', () => onSelect(color));
+    container.appendChild(btn);
+  });
+}
+
+function renderRecentTextColors() {
+  const colors = getRecentTextColors();
+  state.settings.recentTextColors = colors;
+
+  renderRecentTextColorRow(
+    document.getElementById('recent-font-colors'),
+    colors,
+    state.settings.fontColor,
+    (color) => updateTextColor('fontColor', controls.fontColor, color, { remember: true })
+  );
+
+  renderRecentTextColorRow(
+    document.getElementById('recent-immersive-font-colors'),
+    colors,
+    state.settings.immersiveFontColor || state.settings.fontColor,
+    (color) => updateTextColor('immersiveFontColor', controls.immersiveFontColor, color, { remember: true })
+  );
+}
+
+function updateTextColor(settingKey, control, color, { remember = false } = {}) {
+  const normalized = normalizeHexColor(color);
+  if (!normalized) return;
+  state.settings[settingKey] = normalized;
+  if (control) {
+    control.value = normalized;
+  }
+  if (remember) {
+    rememberRecentTextColor(normalized);
+  } else {
+    renderRecentTextColors();
+  }
+  markPresetDirty();
+  applySettings();
+  debounceSave();
+}
+
+export function applyShortcutRegistrationStatus(status = { ok: true, registered: [], failed: [] }) {
+  shortcutRegistrationStatus = {
+    ok: !!status.ok,
+    registered: Array.isArray(status.registered) ? status.registered : [],
+    failed: Array.isArray(status.failed) ? status.failed : [],
+  };
+
+  document.querySelectorAll('.hotkey-input').forEach((el) => {
+    el.classList.remove('conflict');
+    el.removeAttribute('title');
+  });
+
+  const warning = document.getElementById('hotkey-warning');
+  if (!warning) return;
+
+  if (shortcutRegistrationStatus.failed.length === 0) {
+    warning.classList.add('hidden');
+    warning.textContent = '';
+    return;
+  }
+
+  const messages = shortcutRegistrationStatus.failed.map((item) => {
+    const input = document.querySelector(`.hotkey-input[data-key="${item.settingKey}"]`);
+    const label = item.label || input?.closest('.setting-row')?.querySelector('label')?.textContent || '快捷键';
+    const accelerator = formatHotkey(item.accelerator);
+    const reason = item.reason || '注册失败';
+    if (input) {
+      input.classList.add('conflict');
+      input.title = `${label}：${accelerator} ${reason}`;
+    }
+    return `${label} ${accelerator}：${reason}`;
+  });
+
+  warning.textContent = `以下快捷键未生效：${messages.join('；')}。请更换组合键后重试。`;
+  warning.classList.remove('hidden');
 }
 
 // Restore active preset from saved settings on startup
@@ -71,6 +195,88 @@ function syncAlwaysOnTopUi() {
     dom.btnPin.setAttribute('aria-pressed', state.settings.alwaysOnTop ? 'true' : 'false');
     dom.btnPin.title = state.settings.alwaysOnTop ? '取消置顶' : '置顶窗口';
   }
+}
+
+function syncImmersiveUi() {
+  const immersiveFontSize = state.settings.immersiveFontSize || state.settings.fontSize || 16;
+  const immersiveFontColor = state.settings.immersiveFontColor || state.settings.fontColor || '#333333';
+  const immersiveFontOpacity = state.settings.immersiveFontOpacity ?? state.settings.fontOpacity ?? 1;
+  const immersiveLineHeight = state.settings.immersiveLineHeight || state.settings.lineHeight || 1.8;
+
+  if (controls.immersiveMode) {
+    controls.immersiveMode.checked = !!state.settings.immersiveMode;
+  }
+  if (controls.immersiveLines) {
+    controls.immersiveLines.value = state.settings.immersiveLines || 3;
+  }
+  if (controls.immersiveFontSize) {
+    controls.immersiveFontSize.value = immersiveFontSize;
+  }
+  if (controls.immersiveFontColor) {
+    controls.immersiveFontColor.value = immersiveFontColor;
+  }
+  if (controls.immersiveFontOpacity) {
+    controls.immersiveFontOpacity.value = immersiveFontOpacity;
+  }
+  if (controls.immersiveLineHeight) {
+    controls.immersiveLineHeight.value = immersiveLineHeight;
+  }
+  const display = document.getElementById('val-immersive-lines');
+  if (display) {
+    display.textContent = `${state.settings.immersiveLines || 3} 行`;
+  }
+  if (valueDisplays.immersiveFontSize) {
+    valueDisplays.immersiveFontSize.textContent = `${immersiveFontSize}px`;
+  }
+  if (valueDisplays.immersiveFontOpacity) {
+    valueDisplays.immersiveFontOpacity.textContent = `${Math.round(immersiveFontOpacity * 100)}%`;
+  }
+  if (valueDisplays.immersiveLineHeight) {
+    valueDisplays.immersiveLineHeight.textContent = Number(immersiveLineHeight).toFixed(1);
+  }
+  if (dom.btnImmersive) {
+    dom.btnImmersive.classList.toggle('active', !!state.settings.immersiveMode);
+    dom.btnImmersive.setAttribute('aria-pressed', state.settings.immersiveMode ? 'true' : 'false');
+    dom.btnImmersive.title = state.settings.immersiveMode ? '退出沉浸模式' : '沉浸模式';
+  }
+}
+
+export function setImmersiveMode(enabled, { persist = true } = {}) {
+  const nextEnabled = !!enabled;
+  const preserveLineIndex = state.currentMode === 'file' && state.currentFile
+    ? getCurrentReadingLineIndex()
+    : null;
+
+  state.settings.immersiveMode = nextEnabled;
+
+  if (state.settings.immersiveMode && state.currentMode !== 'file') {
+    switchMode('file');
+  }
+
+  if (!state.settings.immersiveMode) {
+    dom.app.classList.remove('immersive-empty');
+  }
+
+  syncImmersiveUi();
+  applySettings();
+
+  if (preserveLineIndex != null) {
+    if (state.settings.immersiveMode || !isLineLimitedMode()) {
+      scrollReaderToLineIndex(preserveLineIndex);
+    } else {
+      setLineLimitedPosition(preserveLineIndex);
+    }
+  }
+
+  if (persist) {
+    window.api.saveSettings(state.settings);
+  }
+
+  return state.settings.immersiveMode;
+}
+
+export function toggleImmersiveMode() {
+  return setImmersiveMode(!state.settings.immersiveMode);
 }
 
 export async function setAlwaysOnTop(enabled, { persist = true } = {}) {
@@ -115,6 +321,12 @@ export function initSettings() {
     visibleLines: document.getElementById('set-visible-lines'),
     hideBg: document.getElementById('set-hide-bg'),
     textOnly: document.getElementById('set-text-only'),
+    immersiveMode: document.getElementById('set-immersive-mode'),
+    immersiveLines: document.getElementById('set-immersive-lines'),
+    immersiveFontSize: document.getElementById('set-immersive-font-size'),
+    immersiveFontColor: document.getElementById('set-immersive-font-color'),
+    immersiveFontOpacity: document.getElementById('set-immersive-font-opacity'),
+    immersiveLineHeight: document.getElementById('set-immersive-line-height'),
     alwaysOnTop: document.getElementById('set-always-on-top'),
   };
 
@@ -123,6 +335,10 @@ export function initSettings() {
     fontOpacity: document.getElementById('val-font-opacity'),
     lineHeight: document.getElementById('val-line-height'),
     bgOpacity: document.getElementById('val-bg-opacity'),
+    immersiveLines: document.getElementById('val-immersive-lines'),
+    immersiveFontSize: document.getElementById('val-immersive-font-size'),
+    immersiveFontOpacity: document.getElementById('val-immersive-font-opacity'),
+    immersiveLineHeight: document.getElementById('val-immersive-line-height'),
   };
 
   // ============ Control event listeners ============
@@ -135,9 +351,11 @@ export function initSettings() {
   });
 
   controls.fontColor.addEventListener('input', (e) => {
-    state.settings.fontColor = e.target.value;
-    markPresetDirty();
-    applySettings();
+    updateTextColor('fontColor', controls.fontColor, e.target.value);
+  });
+
+  controls.fontColor.addEventListener('change', (e) => {
+    rememberRecentTextColor(e.target.value);
     debounceSave();
   });
 
@@ -189,7 +407,7 @@ export function initSettings() {
     markPresetDirty();
     convertReadingPosition(oldVisibleLines, () => {
       applySettings();
-      if (state.settings.visibleLines > 0 && state.currentFile) {
+      if (isLineLimitedMode() && state.currentFile) {
         updateVisibleLines();
         updateProgress();
       }
@@ -207,6 +425,52 @@ export function initSettings() {
 
   controls.textOnly.addEventListener('change', (e) => {
     state.settings.textOnly = e.target.checked;
+    markPresetDirty();
+    applySettings();
+    debounceSave();
+  });
+
+  controls.immersiveMode.addEventListener('change', (e) => {
+    markPresetDirty();
+    setImmersiveMode(e.target.checked);
+  });
+
+  controls.immersiveLines.addEventListener('input', (e) => {
+    state.settings.immersiveLines = parseInt(e.target.value);
+    valueDisplays.immersiveLines.textContent = `${state.settings.immersiveLines} 行`;
+    markPresetDirty();
+    applySettings();
+    debounceSave();
+  });
+
+  controls.immersiveFontSize.addEventListener('input', (e) => {
+    state.settings.immersiveFontSize = parseInt(e.target.value);
+    valueDisplays.immersiveFontSize.textContent = `${state.settings.immersiveFontSize}px`;
+    markPresetDirty();
+    applySettings();
+    debounceSave();
+  });
+
+  controls.immersiveFontColor.addEventListener('input', (e) => {
+    updateTextColor('immersiveFontColor', controls.immersiveFontColor, e.target.value);
+  });
+
+  controls.immersiveFontColor.addEventListener('change', (e) => {
+    rememberRecentTextColor(e.target.value);
+    debounceSave();
+  });
+
+  controls.immersiveFontOpacity.addEventListener('input', (e) => {
+    state.settings.immersiveFontOpacity = parseFloat(e.target.value);
+    valueDisplays.immersiveFontOpacity.textContent = `${Math.round(state.settings.immersiveFontOpacity * 100)}%`;
+    markPresetDirty();
+    applySettings();
+    debounceSave();
+  });
+
+  controls.immersiveLineHeight.addEventListener('input', (e) => {
+    state.settings.immersiveLineHeight = parseFloat(e.target.value);
+    valueDisplays.immersiveLineHeight.textContent = state.settings.immersiveLineHeight.toFixed(1);
     markPresetDirty();
     applySettings();
     debounceSave();
@@ -234,6 +498,8 @@ export function initSettings() {
   document.getElementById('btn-restore-hotkeys').addEventListener('click', () => {
     state.settings.toggleHotkey = 'CommandOrControl+Shift+H';
     state.settings.bossHotkey = 'CommandOrControl+Shift+X';
+    state.settings.settingsHotkey = 'CommandOrControl+Shift+S';
+    state.settings.immersiveHotkey = 'CommandOrControl+Shift+F';
     syncControlsToSettings();
     window.api.saveSettings(state.settings);
   });
@@ -280,12 +546,24 @@ export function initSettings() {
 // ============ Apply Settings ============
 export function applySettings() {
   const root = document.documentElement;
+  const immersiveLines = Math.max(1, Math.min(8, state.settings.immersiveLines || 3));
+  const immersiveFontSize = state.settings.immersiveFontSize || state.settings.fontSize || 16;
+  const immersiveFontColor = state.settings.immersiveFontColor || state.settings.fontColor || '#333333';
+  const immersiveFontOpacity = state.settings.immersiveFontOpacity ?? state.settings.fontOpacity ?? 1;
+  const immersiveLineHeight = state.settings.immersiveLineHeight || state.settings.lineHeight || 1.8;
+  const computedLineHeight = immersiveFontSize * immersiveLineHeight;
   root.style.setProperty('--font-size', `${state.settings.fontSize}px`);
   root.style.setProperty('--font-color', state.settings.fontColor);
   root.style.setProperty('--font-opacity', state.settings.fontOpacity);
   root.style.setProperty('--line-height', state.settings.lineHeight);
   root.style.setProperty('--bg-color', state.settings.bgColor);
   root.style.setProperty('--bg-opacity', state.settings.bgOpacity);
+  root.style.setProperty('--immersive-lines', immersiveLines);
+  root.style.setProperty('--immersive-font-size', `${immersiveFontSize}px`);
+  root.style.setProperty('--immersive-font-color', immersiveFontColor);
+  root.style.setProperty('--immersive-font-opacity', immersiveFontOpacity);
+  root.style.setProperty('--immersive-line-height', immersiveLineHeight);
+  root.style.setProperty('--immersive-height', `${Math.ceil(computedLineHeight * immersiveLines)}px`);
 
   const bgRgb = hexToRgb(state.settings.bgColor);
   if (bgRgb) {
@@ -360,6 +638,9 @@ export function applySettings() {
 
   dom.app.classList.toggle('hover-mode', !!state.settings.hoverMode);
   dom.app.classList.toggle('text-only-mode', !!state.settings.textOnly);
+  dom.app.classList.toggle('immersive-mode', isImmersiveFileMode());
+  dom.app.classList.toggle('immersive-empty', isImmersiveFileMode() && !state.currentFile);
+  syncImmersiveUi();
 
   // Inject/remove CSS to hide webview scrollbars in text-only mode
   if (state.settings.textOnly) {
@@ -386,7 +667,10 @@ export function applySettings() {
   }
 
   if (state.currentMode === 'file') {
-    if (state.settings.visibleLines > 0) {
+    if (isImmersiveFileMode()) {
+      dom.singleLineOverlay.classList.add('hidden');
+      dom.readerContent.style.display = '';
+    } else if (isLineLimitedMode()) {
       dom.singleLineOverlay.classList.remove('hidden');
       dom.readerContent.style.display = 'none';
     } else {
@@ -416,12 +700,30 @@ export function syncControlsToSettings() {
     state.settings.visibleLines > 0 ? `${state.settings.visibleLines} 行` : '全部';
   controls.hideBg.checked = state.settings.hideBg;
   controls.textOnly.checked = state.settings.textOnly;
+  state.settings.immersiveFontSize = state.settings.immersiveFontSize || state.settings.fontSize || 16;
+  state.settings.immersiveFontColor = state.settings.immersiveFontColor || state.settings.fontColor || '#333333';
+  state.settings.immersiveFontOpacity = state.settings.immersiveFontOpacity ?? state.settings.fontOpacity ?? 1;
+  state.settings.immersiveLineHeight = state.settings.immersiveLineHeight || state.settings.lineHeight || 1.8;
+  state.settings.recentTextColors = getRecentTextColors();
+  renderRecentTextColors();
+  syncImmersiveUi();
   syncAlwaysOnTopUi();
 
   const toggleBtn = document.getElementById('set-toggle-hotkey');
   const bossBtn = document.getElementById('set-boss-hotkey');
+  const settingsBtn = document.getElementById('set-settings-hotkey');
+  const immersiveBtn = document.getElementById('set-immersive-hotkey');
+  const helpToggleHotkey = document.getElementById('help-toggle-hotkey');
+  const helpBossHotkey = document.getElementById('help-boss-hotkey');
+  const helpImmersiveHotkey = document.getElementById('help-immersive-hotkey');
   if (toggleBtn) toggleBtn.textContent = formatHotkey(state.settings.toggleHotkey);
   if (bossBtn) bossBtn.textContent = formatHotkey(state.settings.bossHotkey);
+  if (settingsBtn) settingsBtn.textContent = formatHotkey(state.settings.settingsHotkey);
+  if (immersiveBtn) immersiveBtn.textContent = formatHotkey(state.settings.immersiveHotkey);
+  if (helpToggleHotkey) helpToggleHotkey.textContent = formatHotkey(state.settings.toggleHotkey);
+  if (helpBossHotkey) helpBossHotkey.textContent = formatHotkey(state.settings.bossHotkey);
+  if (helpImmersiveHotkey) helpImmersiveHotkey.textContent = formatHotkey(state.settings.immersiveHotkey);
+  applyShortcutRegistrationStatus(shortcutRegistrationStatus);
 }
 
 export function debounceSave() {
@@ -439,6 +741,7 @@ function startRecording(el) {
   recordingInput = el;
   el.classList.add('recording');
   el.textContent = '请按下快捷键组合...';
+  applyShortcutRegistrationStatus({ ok: true, registered: [], failed: [] });
   window.api.unregisterShortcuts();
 }
 
@@ -447,7 +750,9 @@ function cancelRecording() {
   recordingInput.classList.remove('recording');
   recordingInput.textContent = formatHotkey(state.settings[recordingInput.dataset.key]);
   recordingInput = null;
-  window.api.registerShortcuts();
+  window.api.registerShortcuts()
+    .then(applyShortcutRegistrationStatus)
+    .catch(() => {});
 }
 
 function finishRecording(hotkey) {
@@ -457,7 +762,14 @@ function finishRecording(hotkey) {
   recordingInput.textContent = formatHotkey(hotkey);
   recordingInput.classList.remove('recording');
   recordingInput = null;
-  window.api.saveSettings(state.settings);
+  syncControlsToSettings();
+  window.api.saveSettings(state.settings)
+    .then((result) => {
+      if (result?.shortcutStatus) {
+        applyShortcutRegistrationStatus(result.shortcutStatus);
+      }
+    })
+    .catch(() => {});
 }
 
 export function handleHotkeyRecording(e) {
@@ -716,6 +1028,7 @@ export function renderCustomPresets() {
     const opacityInfo = `${Math.round((preset.fontOpacity ?? 1) * 100)}%`;
     const tags = [];
     if (preset.hoverMode) tags.push('悬停');
+    if (preset.immersiveMode) tags.push(`沉浸${preset.immersiveLines || 3}行`);
     if (preset.hideBg) tags.push('无背景');
     if (preset.visibleLines > 0) tags.push(`${preset.visibleLines}行`);
 

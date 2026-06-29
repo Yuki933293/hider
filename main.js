@@ -16,10 +16,16 @@ let hoverWindowState = {
   interactive: true,
 };
 let hoverPollTimer = null;
+let shortcutRegistrationStatus = {
+  ok: true,
+  registered: [],
+  failed: [],
+};
 
 let settings = {
   fontSize: 16,
   fontColor: '#333333',
+  recentTextColors: [],
   fontOpacity: 1.0,
   bgColor: '#ffffff',
   bgOpacity: 0.95,
@@ -30,9 +36,16 @@ let settings = {
   autoHideOnLeave: false,
   hideBg: false,
   textOnly: false,
+  immersiveMode: false,
+  immersiveLines: 3,
+  immersiveFontSize: 16,
+  immersiveFontColor: '#333333',
+  immersiveFontOpacity: 1.0,
+  immersiveLineHeight: 1.8,
   toggleHotkey: 'CommandOrControl+Shift+H',
   bossHotkey: 'CommandOrControl+Shift+X',
   settingsHotkey: 'CommandOrControl+Shift+S',
+  immersiveHotkey: 'CommandOrControl+Shift+F',
   proLicenseKey: '',
   siteRules: {},
 };
@@ -114,6 +127,14 @@ function saveProgress(data) {
     fs.writeFileSync(progressPath, JSON.stringify(merged, null, 2));
   } catch (e) {
     console.error('Failed to save progress:', e);
+  }
+}
+
+function normalizeFilePath(filePath) {
+  try {
+    return fs.realpathSync.native(filePath);
+  } catch {
+    return path.resolve(filePath);
   }
 }
 
@@ -589,21 +610,22 @@ async function openFile() {
 
 function loadFileContent(filePath) {
   try {
-    const ext = path.extname(filePath).toLowerCase();
+    const normalizedPath = normalizeFilePath(filePath);
+    const ext = path.extname(normalizedPath).toLowerCase();
     let content;
 
     if (ext === '.epub') {
-      content = parseEpub(filePath);
+      content = parseEpub(normalizedPath);
     } else {
-      content = fs.readFileSync(filePath, 'utf-8');
+      content = fs.readFileSync(normalizedPath, 'utf-8');
     }
 
     const progress = loadProgress();
-    const scrollPos = progress[filePath] || 0;
-    const fileName = path.basename(filePath);
-    addRecentFile(filePath, fileName);
+    const scrollPos = progress[normalizedPath] || progress[filePath] || 0;
+    const fileName = path.basename(normalizedPath);
+    addRecentFile(normalizedPath, fileName);
     mainWindow.webContents.send('file-loaded', {
-      path: filePath,
+      path: normalizedPath,
       name: fileName,
       content,
       scrollPosition: scrollPos,
@@ -613,27 +635,110 @@ function loadFileContent(filePath) {
   }
 }
 
-function registerShortcuts() {
+function getShortcutDefinitions() {
+  return [
+    {
+      settingKey: 'toggleHotkey',
+      label: '显隐切换',
+      accelerator: settings.toggleHotkey,
+      handler: () => toggleVisibility(),
+    },
+    {
+      settingKey: 'bossHotkey',
+      label: '老板键',
+      accelerator: settings.bossHotkey,
+      handler: () => bossKey(),
+    },
+    {
+      settingKey: 'settingsHotkey',
+      label: '打开设置',
+      accelerator: settings.settingsHotkey,
+      handler: () => {
+        if (mainWindow) {
+          mainWindow.webContents.send('toggle-settings');
+        }
+      },
+    },
+    {
+      settingKey: 'immersiveHotkey',
+      label: '沉浸模式',
+      accelerator: settings.immersiveHotkey,
+      handler: () => {
+        if (mainWindow) {
+          mainWindow.webContents.send('toggle-immersive-mode');
+        }
+      },
+    },
+  ];
+}
+
+function notifyShortcutRegistrationStatus() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.send('shortcuts-registration-result', shortcutRegistrationStatus);
+}
+
+function registerShortcuts({ notify = true } = {}) {
   globalShortcut.unregisterAll();
-  try {
-    globalShortcut.register(settings.toggleHotkey, () => toggleVisibility());
-  } catch (e) {
-    console.error('Failed to register toggle hotkey:', e);
-  }
-  try {
-    globalShortcut.register(settings.bossHotkey, () => bossKey());
-  } catch (e) {
-    console.error('Failed to register boss hotkey:', e);
-  }
-  try {
-    globalShortcut.register(settings.settingsHotkey, () => {
-      if (mainWindow) {
-        mainWindow.webContents.send('toggle-settings');
+
+  const definitions = getShortcutDefinitions().filter(def => !!def.accelerator);
+  const acceleratorCounts = definitions.reduce((acc, def) => {
+    const key = def.accelerator.trim().toLowerCase();
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+  const registered = [];
+  const failed = [];
+
+  definitions.forEach((def) => {
+    const normalizedAccelerator = def.accelerator.trim().toLowerCase();
+    if (acceleratorCounts[normalizedAccelerator] > 1) {
+      failed.push({
+        settingKey: def.settingKey,
+        label: def.label,
+        accelerator: def.accelerator,
+        reason: '与 Hider 内其他快捷键重复',
+      });
+      return;
+    }
+
+    try {
+      const ok = globalShortcut.register(def.accelerator, def.handler);
+      if (ok) {
+        registered.push({
+          settingKey: def.settingKey,
+          label: def.label,
+          accelerator: def.accelerator,
+        });
+      } else {
+        failed.push({
+          settingKey: def.settingKey,
+          label: def.label,
+          accelerator: def.accelerator,
+          reason: '已被系统限制或其他应用占用',
+        });
       }
-    });
-  } catch (e) {
-    console.error('Failed to register settings hotkey:', e);
+    } catch (e) {
+      failed.push({
+        settingKey: def.settingKey,
+        label: def.label,
+        accelerator: def.accelerator,
+        reason: e.message || '快捷键格式无效或不受支持',
+      });
+      console.error(`Failed to register ${def.settingKey}:`, e);
+    }
+  });
+
+  shortcutRegistrationStatus = {
+    ok: failed.length === 0,
+    registered,
+    failed,
+  };
+
+  if (notify) {
+    notifyShortcutRegistrationStatus();
   }
+
+  return shortcutRegistrationStatus;
 }
 
 // Single instance lock: clicking the icon again restores instead of launching a second instance
@@ -666,6 +771,7 @@ if (!gotTheLock) {
         ...settings,
         proActivated: isProActivated(),
       });
+      notifyShortcutRegistrationStatus();
     });
 
     app.on('activate', () => {
@@ -711,12 +817,17 @@ ipcMain.handle('save-settings', (event, newSettings) => {
     refreshTrayMenu();
     emitAlwaysOnTopChanged();
   }
-  registerShortcuts();
-  return settings;
+  const shortcuts = registerShortcuts();
+  return { ...settings, shortcutStatus: shortcuts };
 });
 
 ipcMain.handle('save-progress', (event, data) => {
   saveProgress(data);
+});
+
+ipcMain.on('save-progress-sync', (event, data) => {
+  saveProgress(data);
+  event.returnValue = true;
 });
 
 ipcMain.handle('toggle-visibility', () => toggleVisibility());
@@ -777,7 +888,7 @@ ipcMain.handle('unregister-shortcuts', () => {
 });
 
 ipcMain.handle('register-shortcuts', () => {
-  registerShortcuts();
+  return registerShortcuts();
 });
 
 ipcMain.handle('load-bookmarks', () => {

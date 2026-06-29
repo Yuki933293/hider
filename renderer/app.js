@@ -1,7 +1,7 @@
 // Entry point — imports modules and wires up top-level events
 import { state, dom, initDom } from './modules/state.js';
-import { initContent, switchMode, showContent, closeFile, navigateLine } from './modules/content.js';
-import { initSettings, applySettings, syncControlsToSettings, renderCustomPresets, ensureDefaultPresets, restoreActivePreset, handleHotkeyRecording, cancelRecordingIfOutside, debounceSave, markPresetDirty, updateProStatus, updateProFeatureUI, updateSiteRulesUI, toggleAlwaysOnTop, applyExternalAlwaysOnTop } from './modules/settings.js';
+import { initContent, switchMode, showContent, closeFile, navigateLine, saveCurrentProgressNow, closeTocDropdown, isLineLimitedMode, isImmersiveFileMode } from './modules/content.js';
+import { initSettings, applySettings, syncControlsToSettings, renderCustomPresets, ensureDefaultPresets, restoreActivePreset, handleHotkeyRecording, cancelRecordingIfOutside, debounceSave, markPresetDirty, updateProStatus, updateProFeatureUI, updateSiteRulesUI, toggleAlwaysOnTop, applyExternalAlwaysOnTop, toggleImmersiveMode, setImmersiveMode, applyShortcutRegistrationStatus } from './modules/settings.js';
 import { initHoverController, setHoverDragging } from './modules/hover.js';
 
 // ============ Initialize ============
@@ -25,21 +25,30 @@ window.api.onSettingsLoaded((data) => {
 });
 
 window.api.onToggleSettings(() => toggleSettings());
+window.api.onToggleImmersiveMode(() => toggleImmersiveMode());
+window.api.onShortcutRegistrationResult((status) => applyShortcutRegistrationStatus(status));
 window.api.onAlwaysOnTopChanged((enabled) => {
   applyExternalAlwaysOnTop(enabled);
 });
 
 window.api.onFileLoaded((data) => {
+  saveCurrentProgressNow();
   state.currentFile = data;
   if (state.currentMode !== 'file') {
     switchMode('file');
   }
   showContent(data);
+  applySettings();
+});
+
+window.addEventListener('beforeunload', () => {
+  saveCurrentProgressNow({ sync: true });
 });
 
 // ============ Titlebar Buttons ============
 dom.btnOpen.addEventListener('click', () => window.api.openFile());
 dom.btnPin.addEventListener('click', () => toggleAlwaysOnTop());
+dom.btnImmersive.addEventListener('click', () => toggleImmersiveMode());
 dom.btnCloseFile.addEventListener('click', closeFile);
 document.getElementById('btn-settings').addEventListener('click', toggleSettings);
 document.getElementById('btn-minimize').addEventListener('click', () => window.api.minimizeWindow());
@@ -50,6 +59,9 @@ document.getElementById('btn-close-settings').addEventListener('click', () => {
 });
 
 function toggleSettings() {
+  if (isImmersiveFileMode()) {
+    setImmersiveMode(false);
+  }
   dom.settingsPanel.classList.toggle('hidden');
   document.getElementById('btn-settings').classList.toggle('active', !dom.settingsPanel.classList.contains('hidden'));
 }
@@ -76,6 +88,12 @@ function handleKeyboardShortcuts(e) {
   const inSettings = !dom.settingsPanel.classList.contains('hidden');
 
   if (e.key === 'Escape') {
+    closeTocDropdown();
+    if (isImmersiveFileMode()) {
+      e.preventDefault();
+      setImmersiveMode(false);
+      return;
+    }
     if (inSettings) {
       dom.settingsPanel.classList.add('hidden');
       document.getElementById('btn-settings').classList.remove('active');
@@ -85,8 +103,14 @@ function handleKeyboardShortcuts(e) {
 
   if (inSettings || state.currentMode === 'web') return;
 
+  if (isImmersiveFileMode() && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'o') {
+    e.preventDefault();
+    window.api.openFile();
+    return;
+  }
+
   // Line-limited mode navigation
-  if (state.settings.visibleLines > 0 && state.currentFile) {
+  if (isLineLimitedMode() && state.currentFile) {
     if (e.key === 'ArrowDown' || e.key === 'j') {
       e.preventDefault();
       navigateLine(1);
@@ -118,7 +142,11 @@ function handleKeyboardShortcuts(e) {
   // Font size shortcuts
   if ((e.ctrlKey || e.metaKey) && e.key === '=') {
     e.preventDefault();
-    state.settings.fontSize = Math.min(32, state.settings.fontSize + 1);
+    if (isImmersiveFileMode()) {
+      state.settings.immersiveFontSize = Math.min(32, (state.settings.immersiveFontSize || state.settings.fontSize || 16) + 1);
+    } else {
+      state.settings.fontSize = Math.min(32, state.settings.fontSize + 1);
+    }
     markPresetDirty();
     applySettings();
     syncControlsToSettings();
@@ -126,7 +154,11 @@ function handleKeyboardShortcuts(e) {
   }
   if ((e.ctrlKey || e.metaKey) && e.key === '-') {
     e.preventDefault();
-    state.settings.fontSize = Math.max(10, state.settings.fontSize - 1);
+    if (isImmersiveFileMode()) {
+      state.settings.immersiveFontSize = Math.max(10, (state.settings.immersiveFontSize || state.settings.fontSize || 16) - 1);
+    } else {
+      state.settings.fontSize = Math.max(10, state.settings.fontSize - 1);
+    }
     markPresetDirty();
     applySettings();
     syncControlsToSettings();
@@ -150,6 +182,22 @@ document.addEventListener('click', (e) => {
     dom.bookmarksDropdown.classList.add('hidden');
     dom.btnBookmarksList.classList.remove('active');
   }
+
+  if (!dom.tocDropdown.classList.contains('hidden') && !e.target.closest('#toc-dropdown, #btn-toc')) {
+    closeTocDropdown();
+  }
+});
+
+document.addEventListener('selectstart', (e) => {
+  if (isImmersiveFileMode() && e.target.closest('#text-content, #placeholder')) {
+    e.preventDefault();
+  }
+});
+
+document.addEventListener('dragstart', (e) => {
+  if (isImmersiveFileMode() && e.target.closest('#text-content, #placeholder')) {
+    e.preventDefault();
+  }
 });
 
 // ============ Drag & Drop ============
@@ -172,8 +220,10 @@ document.addEventListener('drop', (e) => {
     } else {
       const reader = new FileReader();
       reader.onload = () => {
+        saveCurrentProgressNow();
         state.currentFile = { path: file.name, name: file.name, content: reader.result, scrollPosition: 0 };
         showContent(state.currentFile);
+        applySettings();
       };
       reader.readAsText(file);
     }
@@ -182,30 +232,49 @@ document.addEventListener('drop', (e) => {
 
 // ============ Manual Window Drag ============
 let isDragging = false;
+let isDragPointerDown = false;
 let dragOffsetX = 0;
 let dragOffsetY = 0;
 
+function endWindowDrag() {
+  isDragPointerDown = false;
+  if (!isDragging) return;
+  isDragging = false;
+  setHoverDragging(false);
+}
+
 document.addEventListener('mousedown', async (e) => {
-  if (e.target.closest('button, input, select, textarea, label, #settings-panel, webview, #bookmarks-dropdown')) return;
-  if (state.currentMode === 'web' && e.target.closest('#reader-container')) return;
+  if (e.button !== 0) return;
+
+  if (isImmersiveFileMode() && e.button === 0 && e.target.closest('#text-content, #placeholder')) {
+    e.preventDefault();
+  } else {
+    if (e.target.closest('button, input, select, textarea, label, #settings-panel, webview, #bookmarks-dropdown, #toc-dropdown')) return;
+    if (state.currentMode === 'web' && e.target.closest('#reader-container')) return;
+  }
+
+  isDragPointerDown = true;
   const result = await window.api.startDrag();
+  if (!isDragPointerDown) return;
   if (!result) return;
   isDragging = true;
   setHoverDragging(true);
   dragOffsetX = result.mouseX - result.winX;
   dragOffsetY = result.mouseY - result.winY;
-  document.body.style.cursor = 'grabbing';
 });
 
-document.addEventListener('mousemove', () => {
+document.addEventListener('mousemove', (e) => {
   if (!isDragging) return;
+  if ((e.buttons & 1) !== 1) {
+    endWindowDrag();
+    return;
+  }
   window.api.moveWindow({ offsetX: dragOffsetX, offsetY: dragOffsetY });
 });
 
-document.addEventListener('mouseup', () => {
-  if (isDragging) {
-    isDragging = false;
-    setHoverDragging(false);
-    document.body.style.cursor = '';
-  }
+document.addEventListener('mouseup', endWindowDrag);
+document.addEventListener('mouseleave', endWindowDrag);
+window.addEventListener('blur', endWindowDrag);
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) endWindowDrag();
 });
