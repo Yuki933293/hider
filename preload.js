@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('api', {
   saveProgressSync: (data) => ipcRenderer.sendSync('save-progress-sync', data),
   toggleVisibility: () => ipcRenderer.invoke('toggle-visibility'),
   setAlwaysOnTop: (enabled) => ipcRenderer.invoke('set-always-on-top', enabled),
+  setTextInputActive: (active) => ipcRenderer.invoke('set-text-input-active', active),
+  searchResources: (query) => ipcRenderer.invoke('search-resources', query),
   minimizeWindow: () => ipcRenderer.invoke('minimize-window'),
   closeWindow: () => ipcRenderer.invoke('close-window'),
   setWindowSize: (size) => ipcRenderer.invoke('set-window-size', size),

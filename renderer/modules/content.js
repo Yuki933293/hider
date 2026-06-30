@@ -1,5 +1,6 @@
 // Content display, web mode, bookmarks, reader mode, site rules
 import { state, dom, hexToRgb, escapeHtml } from './state.js';
+import { getFallbackSearchUrl, getResultSourceLabel, getSearchTypeLabel } from './search.js';
 
 // ============ Built-in Site Rules ============
 // Predefined rules for popular reading sites. User overrides merge on top.
@@ -143,7 +144,13 @@ export function isLineLimitedMode() {
 export function initContent() {
   // Mode switch buttons
   document.querySelectorAll('.mode-btn').forEach((btn) => {
-    btn.addEventListener('click', () => switchMode(btn.dataset.mode));
+    btn.addEventListener('click', () => {
+      if (btn.dataset.mode === state.currentMode && btn.dataset.mode === 'web') {
+        showSearchHome();
+        return;
+      }
+      switchMode(btn.dataset.mode);
+    });
   });
 
   // URL input
@@ -153,6 +160,8 @@ export function initContent() {
       navigateToUrl(dom.urlInput.value.trim());
     }
   });
+
+  renderWebSearchPanel('');
 
   // Webview events
   dom.webview.addEventListener('dom-ready', () => {
@@ -292,6 +301,8 @@ export function initContent() {
     }
   });
 
+  dom.readerContent.addEventListener('wheel', handleImmersiveWheel, { passive: false });
+
   // Load bookmarks
   window.api.loadBookmarks().then((data) => {
     state.bookmarks = data || [];
@@ -327,17 +338,14 @@ export function switchMode(mode) {
     dom.singleLineOverlay.classList.add('hidden');
     dom.progressBar.style.display = 'none';
     dom.btnOpen.style.display = 'none';
-    dom.webview.classList.remove('hidden');
-
-    if (!dom.webview.getAttribute('src')) {
-      dom.webview.src = 'https://www.bing.com';
-      dom.urlInput.value = 'https://www.bing.com';
-      dom.titleFilename.textContent = 'Hider - 搜索或输入网址';
-    }
+    dom.app.classList.add('search-mode');
+    showSearchHome();
     dom.urlInput.focus();
   } else {
     dom.urlBar.classList.add('hidden');
     dom.webview.classList.add('hidden');
+    dom.app.classList.remove('search-mode', 'search-home');
+    hideWebSearchPanel();
     dom.bookmarksDropdown.classList.add('hidden');
     dom.btnBookmarksList.classList.remove('active');
     dom.progressBar.style.display = '';
@@ -560,23 +568,277 @@ async function appendNextChapter() {
 }
 
 // ============ URL Navigation ============
-function navigateToUrl(input) {
-  if (!input) return;
-  let url;
-  if (/^https?:\/\//i.test(input)) {
-    url = input;
-  } else if (/^[\w-]+(\.[\w-]+)+/.test(input) && !input.includes(' ')) {
-    url = 'https://' + input;
-  } else {
-    url = 'https://www.bing.com/search?q=' + encodeURIComponent(input);
+function isProbablyUrl(input) {
+  return /^https?:\/\//i.test(input) || (/^[\w-]+(\.[\w-]+)+/.test(input) && !input.includes(' '));
+}
+
+function normalizeUrl(input) {
+  return /^https?:\/\//i.test(input) ? input : `https://${input}`;
+}
+
+
+function showSearchHome() {
+  dom.app.classList.add('search-home');
+  dom.webview.classList.add('hidden');
+  dom.urlInput.value = '';
+  dom.urlInput.placeholder = '输入关键词搜索全网资源...';
+  dom.titleFilename.textContent = 'Hider - 资源搜索';
+  showWebSearchPanel('');
+}
+
+function showWebSearchPanel(query = dom.urlInput.value.trim()) {
+  dom.app.classList.add('search-home');
+  renderWebSearchPanel(isProbablyUrl(query) ? '' : query);
+  dom.webSearchPanel?.classList.remove('hidden');
+}
+
+function hideWebSearchPanel() {
+  dom.webSearchPanel?.classList.add('hidden');
+  dom.app.classList.remove('search-home');
+}
+
+let webSearchRequestId = 0;
+
+async function renderWebSearchPanel(query = '') {
+  if (!dom.webSourceList) return;
+  const normalized = query.trim();
+  const requestId = ++webSearchRequestId;
+
+  if (!normalized) {
+    dom.webSourceList.innerHTML = `
+      <div class="web-search-empty">
+        <span class="web-search-empty-title">输入关键词</span>
+        <span class="web-search-empty-desc">Hider 会直接返回相关网页链接，不再展示搜索源入口。</span>
+      </div>`;
+    return;
   }
+
+  dom.webSourceList.innerHTML = `
+    <div class="web-search-empty web-search-loading">
+      <span class="web-search-empty-title">正在搜索</span>
+      <span class="web-search-empty-desc">正在从本机请求搜索结果并整理真实链接...</span>
+    </div>`;
+
+  try {
+    const payload = await window.api.searchResources(normalized);
+    if (requestId !== webSearchRequestId) return;
+    const results = Array.isArray(payload?.results) ? payload.results : [];
+
+    if (!payload?.ok || !results.length) {
+      renderSearchFallback(normalized, payload?.error || '暂时没有解析到结果');
+      return;
+    }
+
+    dom.webSourceList.innerHTML = results.map((result) => renderSearchResult(result)).join('');
+    bindSearchResultClicks();
+  } catch (error) {
+    if (requestId !== webSearchRequestId) return;
+    renderSearchFallback(normalized, error?.message || '搜索失败');
+  }
+}
+
+function renderSearchResult(result) {
+  const sourceLabel = getResultSourceLabel(result);
+  const typeLabel = getSearchTypeLabel(result.type);
+  const url = result.url || '';
+  return `
+    <button class="web-result-item" data-result-url="${escapeHtml(url)}">
+      <span class="web-result-main">
+        <span class="web-result-title">${escapeHtml(result.title || url)}</span>
+        <span class="web-result-source">${escapeHtml(sourceLabel)}</span>
+      </span>
+      <span class="web-result-meta">
+        <span>${escapeHtml(typeLabel)}</span>
+        <span>${escapeHtml(result.engine || '搜索')}</span>
+        <span>${escapeHtml(result.categoryLabel || '')}</span>
+      </span>
+      <span class="web-result-url">${escapeHtml(url)}</span>
+      <span class="web-result-desc">${escapeHtml(result.snippet || result.description || '')}</span>
+      <span class="web-result-action">打开链接</span>
+    </button>`;
+}
+
+function renderSearchFallback(query, reason) {
+  const fallbackUrl = getFallbackSearchUrl(query);
+  dom.webSourceList.innerHTML = `
+    <div class="web-search-empty">
+      <span class="web-search-empty-title">没有解析到结果</span>
+      <span class="web-search-empty-desc">${escapeHtml(reason)}，可以先打开搜索页查看。</span>
+    </div>
+    <button class="web-result-item" data-result-url="${escapeHtml(fallbackUrl)}">
+      <span class="web-result-main">
+        <span class="web-result-title">${escapeHtml(query)}</span>
+        <span class="web-result-source">Bing 全网</span>
+      </span>
+      <span class="web-result-meta"><span>备用</span><span>搜索结果页</span></span>
+      <span class="web-result-url">${escapeHtml(fallbackUrl)}</span>
+      <span class="web-result-desc">解析失败时打开搜索引擎结果页。</span>
+      <span class="web-result-action">打开搜索页</span>
+    </button>`;
+  bindSearchResultClicks();
+}
+
+function bindSearchResultClicks() {
+  dom.webSourceList.querySelectorAll('.web-result-item').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const url = btn.dataset.resultUrl;
+      if (!url) return;
+      openWebUrl(url);
+    });
+  });
+}
+
+function openWebUrl(url) {
+  hideWebSearchPanel();
+  dom.webview.classList.remove('hidden');
   dom.webview.src = url;
   dom.urlInput.value = url;
   dom.urlInput.blur();
   dom.webview.focus();
 }
 
+function navigateToUrl(input) {
+  if (!input) {
+    showSearchHome();
+    return;
+  }
+  if (/^https?:\/\//i.test(input)) {
+    openWebUrl(normalizeUrl(input));
+    return;
+  }
+
+  dom.webview.classList.add('hidden');
+  showWebSearchPanel(input);
+  dom.titleFilename.textContent = `Hider - 资源搜索：${input}`;
+}
+
+const IMMERSIVE_WHEEL_ANIMATION_MS = 175;
+
+let immersiveWheelFrame = null;
+let immersiveScrollAnimationFrame = null;
+let immersiveWheelDirection = 0;
+let immersiveWheelStepLines = 1;
+
+function cancelImmersiveScrollAnimation() {
+  if (immersiveScrollAnimationFrame !== null) {
+    window.cancelAnimationFrame(immersiveScrollAnimationFrame);
+    immersiveScrollAnimationFrame = null;
+  }
+}
+
+function resetImmersiveWheelGesture() {
+  immersiveWheelDirection = 0;
+  immersiveWheelStepLines = 1;
+  if (immersiveWheelFrame !== null) {
+    window.cancelAnimationFrame(immersiveWheelFrame);
+    immersiveWheelFrame = null;
+  }
+  cancelImmersiveScrollAnimation();
+}
+
+function getImmersiveLineHeightPx() {
+  const fontSize = state.settings.immersiveFontSize || state.settings.fontSize || 16;
+  const lineHeight = state.settings.immersiveLineHeight || state.settings.lineHeight || 1.8;
+  return Math.max(1, fontSize * lineHeight);
+}
+
+function snapImmersiveScrollToLine({ save = true } = {}) {
+  if (!isImmersiveFileMode()) return;
+  const el = dom.readerContent;
+  const lineHeight = getImmersiveLineHeightPx();
+  const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
+  const snapped = Math.max(0, Math.min(Math.round(el.scrollTop / lineHeight) * lineHeight, maxScrollTop));
+  el.scrollTop = snapped;
+  updateProgress();
+  if (save) debounceSaveProgress();
+}
+
+function animateImmersiveScrollTo(targetTop, { save = true } = {}) {
+  const el = dom.readerContent;
+  const startTop = el.scrollTop;
+  const distance = targetTop - startTop;
+
+  cancelImmersiveScrollAnimation();
+
+  if (Math.abs(distance) < 0.5) {
+    el.scrollTop = targetTop;
+    updateProgress();
+    if (save) debounceSaveProgress();
+    return true;
+  }
+
+  const startAt = performance.now();
+  const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+
+  const tick = (now) => {
+    const progress = Math.min(1, (now - startAt) / IMMERSIVE_WHEEL_ANIMATION_MS);
+    el.scrollTop = startTop + distance * easeOutCubic(progress);
+    updateProgress();
+
+    if (progress < 1) {
+      immersiveScrollAnimationFrame = window.requestAnimationFrame(tick);
+      return;
+    }
+
+    el.scrollTop = targetTop;
+    immersiveScrollAnimationFrame = null;
+    updateProgress();
+    if (save) debounceSaveProgress();
+  };
+
+  immersiveScrollAnimationFrame = window.requestAnimationFrame(tick);
+  return true;
+}
+
+export function navigateImmersiveLines(deltaLines, { save = true, animate = false } = {}) {
+  if (!isImmersiveFileMode() || !state.currentFile) return false;
+  if (animate && immersiveScrollAnimationFrame !== null) return false;
+
+  const el = dom.readerContent;
+  const lineHeight = getImmersiveLineHeightPx();
+  const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
+  const currentLine = Math.round(el.scrollTop / lineHeight);
+  const nextTop = Math.max(0, Math.min((currentLine + deltaLines) * lineHeight, maxScrollTop));
+
+  if (animate) {
+    return animateImmersiveScrollTo(nextTop, { save });
+  }
+
+  cancelImmersiveScrollAnimation();
+  el.scrollTop = nextTop;
+  updateProgress();
+  if (save) debounceSaveProgress();
+  return true;
+}
+
+function normalizeWheelDeltaY(e) {
+  if (e.deltaMode === WheelEvent.DOM_DELTA_LINE) return e.deltaY * getImmersiveLineHeightPx();
+  if (e.deltaMode === WheelEvent.DOM_DELTA_PAGE) return e.deltaY * dom.readerContent.clientHeight;
+  return e.deltaY;
+}
+
+function handleImmersiveWheel(e) {
+  if (!isImmersiveFileMode() || !state.currentFile) return;
+  e.preventDefault();
+
+  const deltaY = normalizeWheelDeltaY(e);
+  const direction = Math.sign(deltaY);
+  if (!direction) return;
+
+  immersiveWheelDirection = direction;
+  immersiveWheelStepLines = e.shiftKey ? Math.max(1, state.settings.immersiveLines || 3) : 1;
+
+  if (immersiveWheelFrame !== null || immersiveScrollAnimationFrame !== null) return;
+
+  immersiveWheelFrame = window.requestAnimationFrame(() => {
+    immersiveWheelFrame = null;
+    const moved = navigateImmersiveLines(immersiveWheelDirection * immersiveWheelStepLines, { animate: true });
+    if (!moved) resetImmersiveWheelGesture();
+  });
+}
+
 export function closeFile() {
+  resetImmersiveWheelGesture();
   saveCurrentProgressNow();
   state.currentFile = null;
   state.lines = [];

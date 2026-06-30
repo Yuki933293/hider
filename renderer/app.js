@@ -1,6 +1,6 @@
 // Entry point — imports modules and wires up top-level events
 import { state, dom, initDom } from './modules/state.js';
-import { initContent, switchMode, showContent, closeFile, navigateLine, saveCurrentProgressNow, closeTocDropdown, isLineLimitedMode, isImmersiveFileMode } from './modules/content.js';
+import { initContent, switchMode, showContent, closeFile, navigateLine, navigateImmersiveLines, saveCurrentProgressNow, closeTocDropdown, isLineLimitedMode, isImmersiveFileMode } from './modules/content.js';
 import { initSettings, applySettings, syncControlsToSettings, renderCustomPresets, ensureDefaultPresets, restoreActivePreset, handleHotkeyRecording, cancelRecordingIfOutside, debounceSave, markPresetDirty, updateProStatus, updateProFeatureUI, updateSiteRulesUI, toggleAlwaysOnTop, applyExternalAlwaysOnTop, toggleImmersiveMode, setImmersiveMode, applyShortcutRegistrationStatus } from './modules/settings.js';
 import { initHoverController, setHoverDragging } from './modules/hover.js';
 
@@ -9,6 +9,30 @@ initDom();
 initContent();
 initSettings();
 initHoverController();
+
+function isImeTextEntry(el) {
+  if (!el) return false;
+  if (el.isContentEditable) return true;
+  if (el.tagName === 'TEXTAREA') return true;
+  if (el.tagName !== 'INPUT') return false;
+  return ['text', 'search', 'url', 'email', 'password', 'number', ''].includes((el.type || '').toLowerCase());
+}
+
+document.addEventListener('focusin', (e) => {
+  if (isImeTextEntry(e.target)) {
+    window.api.setTextInputActive?.(true);
+  }
+});
+
+document.addEventListener('focusout', (e) => {
+  if (isImeTextEntry(e.target)) {
+    window.setTimeout(() => {
+      if (!isImeTextEntry(document.activeElement)) {
+        window.api.setTextInputActive?.(false);
+      }
+    }, 0);
+  }
+});
 
 // ============ IPC Events ============
 window.api.onSettingsLoaded((data) => {
@@ -119,6 +143,31 @@ function handleKeyboardShortcuts(e) {
     if (e.key === 'ArrowUp' || e.key === 'k') {
       e.preventDefault();
       navigateLine(-1);
+      return;
+    }
+  }
+
+  // Immersive mode keeps every keyboard movement aligned to full text rows.
+  if (isImmersiveFileMode() && state.currentFile) {
+    const pageLines = Math.max(1, state.settings.immersiveLines || 3);
+    if (e.key === 'ArrowDown' || e.key === 'j') {
+      e.preventDefault();
+      navigateImmersiveLines(1);
+      return;
+    }
+    if (e.key === 'ArrowUp' || e.key === 'k') {
+      e.preventDefault();
+      navigateImmersiveLines(-1);
+      return;
+    }
+    if (e.key === ' ' || e.key === 'PageDown') {
+      e.preventDefault();
+      navigateImmersiveLines(pageLines);
+      return;
+    }
+    if (e.key === 'PageUp') {
+      e.preventDefault();
+      navigateImmersiveLines(-pageLines);
       return;
     }
   }

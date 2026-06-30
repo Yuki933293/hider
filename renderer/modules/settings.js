@@ -399,6 +399,9 @@ function syncImmersiveUi() {
   if (controls.immersiveMode) {
     controls.immersiveMode.checked = !!state.settings.immersiveMode;
   }
+  if (controls.rememberImmersiveMode) {
+    controls.rememberImmersiveMode.checked = !!state.settings.rememberImmersiveMode;
+  }
   if (controls.immersiveLines) {
     controls.immersiveLines.value = state.settings.immersiveLines || 3;
   }
@@ -515,6 +518,7 @@ export function initSettings() {
     hideBg: document.getElementById('set-hide-bg'),
     textOnly: document.getElementById('set-text-only'),
     immersiveMode: document.getElementById('set-immersive-mode'),
+    rememberImmersiveMode: document.getElementById('set-remember-immersive-mode'),
     immersiveLines: document.getElementById('set-immersive-lines'),
     immersiveFontSize: document.getElementById('set-immersive-font-size'),
     immersiveFontColor: document.getElementById('set-immersive-font-color'),
@@ -629,6 +633,13 @@ export function initSettings() {
     setImmersiveMode(e.target.checked);
   });
 
+  if (controls.rememberImmersiveMode) {
+    controls.rememberImmersiveMode.addEventListener('change', (e) => {
+      state.settings.rememberImmersiveMode = e.target.checked;
+      window.api.saveSettings(state.settings);
+    });
+  }
+
   controls.immersiveLines.addEventListener('input', (e) => {
     state.settings.immersiveLines = parseInt(e.target.value);
     valueDisplays.immersiveLines.textContent = `${state.settings.immersiveLines} 行`;
@@ -738,6 +749,24 @@ export function initSettings() {
   initUpdateUi();
 }
 
+let immersiveResizeTimer = null;
+
+function scheduleImmersiveWindowResize(height) {
+  window.clearTimeout(immersiveResizeTimer);
+  if (!isImmersiveFileMode()) return;
+
+  immersiveResizeTimer = window.setTimeout(async () => {
+    try {
+      const bounds = await window.api.getWindowBounds();
+      const width = Math.max(240, Math.round(bounds?.width || window.innerWidth || 480));
+      const targetHeight = Math.max(24, Math.ceil(height));
+      await window.api.setWindowSize({ width, height: targetHeight });
+    } catch (e) {
+      console.warn('Failed to resize immersive window:', e);
+    }
+  }, 80);
+}
+
 // ============ Apply Settings ============
 export function applySettings() {
   const root = document.documentElement;
@@ -758,7 +787,9 @@ export function applySettings() {
   root.style.setProperty('--immersive-font-color', immersiveFontColor);
   root.style.setProperty('--immersive-font-opacity', immersiveFontOpacity);
   root.style.setProperty('--immersive-line-height', immersiveLineHeight);
-  root.style.setProperty('--immersive-height', `${Math.ceil(computedLineHeight * immersiveLines)}px`);
+  const immersiveHeight = Math.ceil(computedLineHeight * immersiveLines);
+  root.style.setProperty('--immersive-height', `${immersiveHeight}px`);
+  scheduleImmersiveWindowResize(immersiveHeight);
 
   const bgRgb = hexToRgb(state.settings.bgColor);
   if (bgRgb) {
@@ -895,6 +926,9 @@ export function syncControlsToSettings() {
     state.settings.visibleLines > 0 ? `${state.settings.visibleLines} 行` : '全部';
   controls.hideBg.checked = state.settings.hideBg;
   controls.textOnly.checked = state.settings.textOnly;
+  if (controls.rememberImmersiveMode) {
+    controls.rememberImmersiveMode.checked = !!state.settings.rememberImmersiveMode;
+  }
   if (controls.updateAutoCheck) {
     controls.updateAutoCheck.checked = state.settings.updateAutoCheck !== false;
   }
@@ -1001,11 +1035,9 @@ export function cancelRecordingIfOutside(e) {
 }
 
 // ============ Presets ============
-async function saveCurrentAsPreset(name) {
+function saveCurrentAsPreset(name) {
   const preset = { name };
   presetKeys.forEach(key => preset[key] = state.settings[key]);
-  const bounds = await window.api.getWindowBounds();
-  if (bounds) { preset.windowWidth = bounds.width; preset.windowHeight = bounds.height; }
   if (!state.settings.customPresets) state.settings.customPresets = [];
   state.settings.customPresets.push(preset);
   const newIndex = state.settings.customPresets.length - 1;
@@ -1020,11 +1052,6 @@ function applyPreset(index) {
   presetKeys.forEach(key => {
     if (preset[key] !== undefined) state.settings[key] = preset[key];
   });
-
-  if (preset.windowWidth && preset.windowHeight) {
-    window.api.setWindowSize({ width: preset.windowWidth, height: preset.windowHeight });
-    setTimeout(updateWindowSizeDisplay, 200);
-  }
 
   setActivePreset(index);
   convertReadingPosition(oldVisibleLines, () => {
@@ -1058,12 +1085,12 @@ function deletePreset(index) {
   renderCustomPresets();
 }
 
-async function updatePreset(index) {
+function updatePreset(index) {
   const preset = (state.settings.customPresets || [])[index];
   if (!preset) return;
   presetKeys.forEach(key => preset[key] = state.settings[key]);
-  const bounds = await window.api.getWindowBounds();
-  if (bounds) { preset.windowWidth = bounds.width; preset.windowHeight = bounds.height; }
+  delete preset.windowWidth;
+  delete preset.windowHeight;
   state.isPresetDirty = false;
   window.api.saveSettings(state.settings);
   renderCustomPresets();
@@ -1221,8 +1248,6 @@ export function renderCustomPresets() {
     const summary = document.createElement('div');
     summary.className = 'custom-preset-summary';
 
-    const sizeInfo = preset.windowWidth && preset.windowHeight
-      ? `${preset.windowWidth}×${preset.windowHeight}` : '';
     const fontInfo = `${preset.fontSize || 14}px`;
     const opacityInfo = `${Math.round((preset.fontOpacity ?? 1) * 100)}%`;
     const tags = [];
@@ -1231,7 +1256,7 @@ export function renderCustomPresets() {
     if (preset.hideBg) tags.push('无背景');
     if (preset.visibleLines > 0) tags.push(`${preset.visibleLines}行`);
 
-    summary.textContent = [fontInfo, opacityInfo, sizeInfo, ...tags].filter(Boolean).join(' · ');
+    summary.textContent = [fontInfo, opacityInfo, ...tags].filter(Boolean).join(' · ');
 
     item.appendChild(header);
     item.appendChild(summary);

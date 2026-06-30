@@ -11,11 +11,11 @@
     <div id="titlebar">
       <div id="mode-switcher">
         <button class="mode-btn active" data-mode="file">文件</button>
-        <button class="mode-btn" data-mode="web">网页</button>
+        <button class="mode-btn" data-mode="web">搜索</button>
       </div>
       <div id="titlebar-drag">
         <span id="titlebar-filename">Hider - 拖入文件或点击文件夹图标打开</span>
-        <button id="btn-back-to-web" class="hidden" title="返回网页浏览">
+        <button id="btn-back-to-web" class="hidden" title="返回搜索">
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <polyline points="15 18 9 12 15 6"></polyline>
           </svg>
@@ -77,7 +77,7 @@
       </div>
     </div>
 
-    <!-- URL bar (web mode only) -->
+    <!-- Search bar (search mode only) -->
     <div id="url-bar" class="hidden">
       <div id="nav-buttons">
         <button id="btn-back" title="后退">
@@ -98,7 +98,7 @@
         </button>
       </div>
       <div id="url-input-wrapper">
-        <input type="text" id="url-input" placeholder="搜索或输入网址..." spellcheck="false" autocomplete="off">
+        <input type="text" id="url-input" placeholder="输入关键词搜索全网资源..." spellcheck="false" autocomplete="off">
       </div>
       <button id="btn-bookmark" title="收藏此页">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -165,6 +165,13 @@
       </div>
       <div id="single-line-overlay" class="hidden">
         <div id="single-line-text"></div>
+      </div>
+      <div id="web-search-panel" class="hidden">
+        <div class="web-search-inner">
+          <div class="web-search-title">资源搜索</div>
+          <div class="web-search-subtitle">输入关键词后直接返回相关链接，不再展示搜索源入口。</div>
+          <div class="web-source-list" id="web-source-list"></div>
+        </div>
       </div>
       <!-- Webview (web mode only) -->
       <webview id="webview" partition="persist:reader" allowpopups class="hidden"></webview>
@@ -369,7 +376,17 @@
                   <input type="checkbox" id="set-immersive-mode">
                   <span class="toggle-slider"></span>
                 </label>
-                <span class="setting-desc">固定行数自然滚动</span>
+                <span class="setting-desc">自动高度，滚轮按整行翻动</span>
+              </div>
+            </div>
+            <div class="setting-row">
+              <label>记住沉浸</label>
+              <div class="setting-control">
+                <label class="toggle">
+                  <input type="checkbox" id="set-remember-immersive-mode">
+                  <span class="toggle-slider"></span>
+                </label>
+                <span class="setting-desc">下次启动保持沉浸开关状态</span>
               </div>
             </div>
             <div class="setting-row">

@@ -14,7 +14,7 @@
     <a href="https://github.com/Yuki933293/hider"><img alt="GitHub repo" src="https://img.shields.io/badge/GitHub-hider-181717?logo=github" /></a>
     <img alt="Electron" src="https://img.shields.io/badge/Electron-33-47848F?logo=electron&logoColor=white" />
     <img alt="Platform" src="https://img.shields.io/badge/macOS%20%7C%20Windows-supported-blue" />
-    <img alt="License" src="https://img.shields.io/badge/license-ISC-green" />
+    <img alt="License" src="https://img.shields.io/badge/license-AGPL--3.0--only-green" />
   </p>
 </div>
 
@@ -43,8 +43,8 @@ Hider is a desktop reader designed for quiet, low-distraction reading. It can di
 
 The recommended path is to download a packaged release from [GitHub Releases](https://github.com/Yuki933293/hider/releases):
 
-- macOS: download the `.dmg` and drag Hider into Applications.
-- Windows: download `Hider-*-Setup-x64.exe` and follow the installer.
+- macOS: download `Hider-*-mac-arm64.dmg` and drag Hider into Applications.
+- Windows: download `Hider-*-win-x64-setup.exe` and follow the installer.
 
 You can also run Hider from source:
 
@@ -87,7 +87,7 @@ Shortcuts can be changed in settings. If a shortcut is already used by the syste
 | Mode | Description |
 | --- | --- |
 | Local File | Read local text files with progress restore and chapter navigation. |
-| Web | Browse pages in the built-in WebView and extract readable text. |
+| Search | Enter keywords, get real related links, and extract readable text after opening a result. |
 | Line-Limited | Show only a fixed number of lines for compact floating reading. |
 | Immersive | Hide all visible controls and keep only text, scrolling, and shortcuts. |
 
@@ -95,8 +95,10 @@ Shortcuts can be changed in settings. If a shortcut is already used by the syste
 
 Hider is local-first by default. Reading progress, recent files, shortcuts, and visual settings are stored in the local app data directory. Hider does not require an account and does not upload local reading content.
 
-Web mode accesses the pages you open. Extracted web content is used only for the current reading view.
+Search mode requests search-engine result pages locally on your device and organizes real links without using an official Hider server. Hider accesses a target site only after you open a specific result. Extracted web content is used only for the current reading view.
 
 ## License
 
-Hider is released under the ISC License.
+Hider source code is released under the GNU Affero General Public License v3.0 only (AGPL-3.0-only). See [LICENSE](LICENSE).
+
+The Hider name, icon, and brand assets are not automatically licensed as trademarks or brand identifiers. Do not use the Hider name, icon, or confusingly similar marks to distribute builds that may be mistaken for an official release without permission.

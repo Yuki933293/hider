@@ -25,6 +25,7 @@ let shortcutRegistrationStatus = {
   registered: [],
   failed: [],
 };
+let textInputActive = false;
 
 let settings = {
   fontSize: 16,
@@ -41,6 +42,7 @@ let settings = {
   hideBg: false,
   textOnly: false,
   immersiveMode: false,
+  rememberImmersiveMode: false,
   immersiveLines: 3,
   immersiveFontSize: 16,
   immersiveFontColor: '#333333',
@@ -54,6 +56,265 @@ let settings = {
   proLicenseKey: '',
   siteRules: {},
 };
+
+
+// ============ Local Resource Search ============
+const SEARCH_CACHE_TTL = 10 * 60 * 1000;
+const SEARCH_FETCH_TIMEOUT = 8000;
+const SEARCH_CACHE = new Map();
+const SEARCH_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
+
+const SEARCH_CATEGORIES = [
+  { id: 'web', label: '全网', query: (q) => q, weight: 90 },
+  { id: 'novel', label: '小说', query: (q) => `${q} 小说 在线阅读 最新章节`, weight: 84 },
+  { id: 'text', label: '文本', query: (q) => `${q} txt epub 全本 下载`, weight: 78 },
+  { id: 'cloud', label: '网盘', query: (q) => `${q} 网盘 夸克 百度网盘 阿里云盘`, weight: 72 },
+  { id: 'community', label: '社区', query: (q) => `${q} 论坛 贴吧 资源 Telegram TG`, weight: 66 },
+];
+
+function pruneSearchCache() {
+  const now = Date.now();
+  for (const [key, value] of SEARCH_CACHE.entries()) {
+    if (!value || now - value.timestamp > SEARCH_CACHE_TTL) {
+      SEARCH_CACHE.delete(key);
+    }
+  }
+  if (SEARCH_CACHE.size > 40) {
+    const oldest = [...SEARCH_CACHE.entries()].sort((a, b) => a[1].timestamp - b[1].timestamp).slice(0, 10);
+    oldest.forEach(([key]) => SEARCH_CACHE.delete(key));
+  }
+}
+
+function decodeHtmlEntities(value = '') {
+  return String(value)
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#x27;/g, "'")
+    .replace(/&#x2F;/g, '/')
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+    .replace(/&#x([a-f0-9]+);/gi, (_, code) => String.fromCharCode(parseInt(code, 16)));
+}
+
+function stripHtml(value = '') {
+  return decodeHtmlEntities(String(value).replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' '))
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getDomain(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch (e) {
+    return '';
+  }
+}
+
+function normalizeSearchResultUrl(rawUrl) {
+  if (!rawUrl) return '';
+  let url = decodeHtmlEntities(rawUrl).trim();
+  if (url.startsWith('//')) url = `https:${url}`;
+  if (url.startsWith('/l/?') || url.includes('duckduckgo.com/l/?')) {
+    try {
+      const parsed = new URL(url.startsWith('http') ? url : `https://duckduckgo.com${url}`);
+      const uddg = parsed.searchParams.get('uddg');
+      if (uddg) url = uddg;
+    } catch (e) {}
+  }
+  if (url.includes('bing.com/ck/a')) {
+    try {
+      const parsed = new URL(url);
+      const target = parsed.searchParams.get('u') || parsed.searchParams.get('url');
+      if (target) {
+        try {
+          const normalized = target.startsWith('a1') ? Buffer.from(target.slice(2), 'base64').toString('utf8') : target;
+          url = normalized;
+        } catch (e) {
+          url = target;
+        }
+      }
+    } catch (e) {}
+  }
+  if (!/^https?:\/\//i.test(url)) return '';
+  const domain = getDomain(url);
+  if (!domain || /^(bing|duckduckgo|google|baidu|sogou)\./i.test(domain)) return '';
+  return url;
+}
+
+function classifySearchResult(url, title = '', snippet = '') {
+  const haystack = `${url} ${title} ${snippet}`.toLowerCase();
+  const domain = getDomain(url);
+  if (/t\.me|telegram/.test(haystack)) return 'telegram';
+  if (/pan\.baidu|quark\.cn|aliyundrive|alipan|lanzou|123pan|115\.com|cloud|网盘|夸克|阿里云盘|百度网盘/.test(haystack)) return 'cloud-resource';
+  if (/\.txt\b|\.epub\b|\.mobi\b|txt|epub|全本|下载|电子书|最新章节|在线阅读/.test(haystack)) return 'text-resource';
+  if (/qidian\.com|qdmm\.com|jjwxc\.net|zongheng\.com|17k\.com|fanqienovel\.com|qimao\.com|ciweimao\.com|sfacg\.com|faloo\.com|shuqi\.com|ireader\.com|gongzicp\.com|hongxiu\.com|xxsy\.net|book\.qq\.com/.test(domain)) return 'official';
+  if (/tieba|douban|zhihu|v2ex|nga|forum|bbs|社区|论坛|贴吧|讨论/.test(haystack)) return 'forum';
+  return 'web';
+}
+
+function sourceNameFromDomain(domain) {
+  const names = [
+    ['qidian.com', '起点中文网'],
+    ['qdmm.com', '起点女生网'],
+    ['jjwxc.net', '晋江文学城'],
+    ['zongheng.com', '纵横中文网'],
+    ['17k.com', '17K 小说网'],
+    ['fanqienovel.com', '番茄小说'],
+    ['qimao.com', '七猫中文网'],
+    ['ciweimao.com', '刺猬猫'],
+    ['sfacg.com', 'SF 轻小说'],
+    ['faloo.com', '飞卢小说网'],
+    ['shuqi.com', '书旗小说'],
+    ['ireader.com', '掌阅'],
+    ['gongzicp.com', '长佩文学'],
+    ['t.me', 'Telegram'],
+  ];
+  const matched = names.find(([host]) => domain === host || domain.endsWith(`.${host}`));
+  return matched?.[1] || domain || '未知来源';
+}
+
+async function fetchSearchHtml(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SEARCH_FETCH_TIMEOUT);
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'user-agent': SEARCH_USER_AGENT,
+        'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'accept-language': 'zh-CN,zh;q=0.9,en;q=0.7',
+      },
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return await response.text();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function parseDuckDuckGoResults(html, meta) {
+  const results = [];
+  const linkRegex = /<a[^>]+class="[^"]*result__a[^"]*"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+  let match;
+  while ((match = linkRegex.exec(html)) && results.length < 12) {
+    const after = html.slice(match.index, match.index + 1800);
+    const snippetMatch = after.match(/<a[^>]+class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>|<div[^>]+class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
+    const url = normalizeSearchResultUrl(match[1]);
+    const title = stripHtml(match[2]);
+    const snippet = stripHtml(snippetMatch?.[1] || snippetMatch?.[2] || '');
+    if (!url || !title) continue;
+    const domain = getDomain(url);
+    results.push({
+      title,
+      url,
+      snippet,
+      domain,
+      sourceName: sourceNameFromDomain(domain),
+      engine: 'DuckDuckGo',
+      category: meta.id,
+      categoryLabel: meta.label,
+      baseScore: meta.weight,
+    });
+  }
+  return results;
+}
+
+function parseBingResults(html, meta) {
+  const results = [];
+  const itemRegex = /<li[^>]+class="[^"]*b_algo[^"]*"[\s\S]*?<h2[^>]*>[\s\S]*?<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?(?:<p[^>]*>([\s\S]*?)<\/p>)?[\s\S]*?<\/li>/gi;
+  let match;
+  while ((match = itemRegex.exec(html)) && results.length < 12) {
+    const url = normalizeSearchResultUrl(match[1]);
+    const title = stripHtml(match[2]);
+    const snippet = stripHtml(match[3] || '');
+    if (!url || !title) continue;
+    const domain = getDomain(url);
+    results.push({
+      title,
+      url,
+      snippet,
+      domain,
+      sourceName: sourceNameFromDomain(domain),
+      engine: 'Bing',
+      category: meta.id,
+      categoryLabel: meta.label,
+      baseScore: meta.weight - 4,
+    });
+  }
+  return results;
+}
+
+async function fetchSearchCategory(query, category) {
+  const builtQuery = category.query(query);
+  const ddgUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(builtQuery)}`;
+  try {
+    const html = await fetchSearchHtml(ddgUrl);
+    const parsed = parseDuckDuckGoResults(html, category);
+    if (parsed.length) return parsed;
+  } catch (e) {
+    console.warn('DuckDuckGo search failed:', e.message);
+  }
+
+  const bingUrl = `https://www.bing.com/search?q=${encodeURIComponent(builtQuery)}`;
+  try {
+    const html = await fetchSearchHtml(bingUrl);
+    return parseBingResults(html, category);
+  } catch (e) {
+    console.warn('Bing search failed:', e.message);
+    return [];
+  }
+}
+
+function scoreSearchResult(result, query, index) {
+  const text = `${result.title} ${result.snippet} ${result.domain}`.toLowerCase();
+  const normalizedQuery = query.toLowerCase();
+  let score = result.baseScore || 50;
+  if (text.includes(normalizedQuery)) score += 16;
+  if (result.type === 'official') score += 10;
+  if (result.type === 'text-resource') score += 5;
+  score -= Math.min(index, 8);
+  return Math.max(1, Math.round(score));
+}
+
+async function searchResourcesLocally(query) {
+  const normalized = String(query || '').trim().slice(0, 120);
+  if (!normalized) return { ok: true, query: '', results: [] };
+  pruneSearchCache();
+  const cacheKey = normalized.toLowerCase();
+  const cached = SEARCH_CACHE.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp <= SEARCH_CACHE_TTL) {
+    return { ...cached.payload, cached: true };
+  }
+
+  const settled = await Promise.allSettled(SEARCH_CATEGORIES.map((category) => fetchSearchCategory(normalized, category)));
+  const deduped = new Map();
+  settled.forEach((entry) => {
+    if (entry.status !== 'fulfilled') return;
+    entry.value.forEach((result, index) => {
+      const urlKey = result.url.replace(/[#?].*$/, '').toLowerCase();
+      if (!urlKey || deduped.has(urlKey)) return;
+      const type = classifySearchResult(result.url, result.title, result.snippet);
+      const scored = {
+        ...result,
+        id: crypto.createHash('sha1').update(result.url).digest('hex').slice(0, 12),
+        type,
+      };
+      scored.score = scoreSearchResult(scored, normalized, index);
+      deduped.set(urlKey, scored);
+    });
+  });
+
+  const results = [...deduped.values()]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 36)
+    .map(({ baseScore, ...result }) => result);
+
+  const payload = { ok: true, query: normalized, results, source: 'local-html-search' };
+  SEARCH_CACHE.set(cacheKey, { timestamp: Date.now(), payload });
+  return payload;
+}
 
 // ============ Pro License Validation ============
 const LICENSE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -88,6 +349,23 @@ function isProActivated() {
   return validateLicenseKey(settings.proLicenseKey);
 }
 
+function normalizeSettingsForPersistence(nextSettings) {
+  const normalized = { ...nextSettings };
+  if (!normalized.rememberImmersiveMode) {
+    normalized.immersiveMode = false;
+  }
+  delete normalized.windowBounds;
+  if (Array.isArray(normalized.customPresets)) {
+    normalized.customPresets = normalized.customPresets.map((preset) => {
+      const cleanPreset = { ...preset };
+      delete cleanPreset.windowWidth;
+      delete cleanPreset.windowHeight;
+      return cleanPreset;
+    });
+  }
+  return normalized;
+}
+
 function loadSettings() {
   try {
     if (fs.existsSync(settingsPath)) {
@@ -99,7 +377,7 @@ function loadSettings() {
         }
         delete data.singleLineMode;
       }
-      settings = { ...settings, ...data };
+      settings = normalizeSettingsForPersistence({ ...settings, ...data });
     }
   } catch (e) {
     console.error('Failed to load settings:', e);
@@ -694,7 +972,8 @@ function applyWindowZOrder({ alwaysOnTop = settings.alwaysOnTop, hoverMode = hov
   const clickThrough = hoverMode && !interactive;
 
   mainWindow.setIgnoreMouseEvents(clickThrough, { forward: true });
-  mainWindow.setAlwaysOnTop(alwaysOnTop, alwaysOnTop ? 'screen-saver' : 'normal');
+  const shouldFloatAboveApps = alwaysOnTop && !textInputActive;
+  mainWindow.setAlwaysOnTop(shouldFloatAboveApps, shouldFloatAboveApps ? 'screen-saver' : 'normal');
 }
 
 function emitHoverStateChanged() {
@@ -782,28 +1061,10 @@ function setAlwaysOnTopSetting(enabled) {
 
 function createWindow() {
   const workArea = screen.getPrimaryDisplay().workAreaSize;
-  let winWidth = 800, winHeight = 600, winX, winY;
-
-  // Restore saved window bounds
-  if (settings.windowBounds) {
-    const b = settings.windowBounds;
-    winWidth = b.width || 800;
-    winHeight = b.height || 600;
-    // Validate position is within any visible display
-    const displays = screen.getAllDisplays();
-    const onScreen = displays.some(d => {
-      const wa = d.workArea;
-      return b.x >= wa.x - 50 && b.x < wa.x + wa.width &&
-             b.y >= wa.y - 50 && b.y < wa.y + wa.height;
-    });
-    if (onScreen) {
-      winX = b.x;
-      winY = b.y;
-    }
-  }
-
-  if (winX === undefined) winX = Math.floor((workArea.width - winWidth) / 2);
-  if (winY === undefined) winY = Math.floor((workArea.height - winHeight) / 2);
+  const winWidth = 600;
+  const winHeight = 400;
+  const winX = Math.floor((workArea.width - winWidth) / 2);
+  const winY = Math.floor((workArea.height - winHeight) / 2);
 
   mainWindow = new BrowserWindow({
     width: winWidth,
@@ -841,17 +1102,6 @@ function createWindow() {
   });
 
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
-
-  // Auto-save window bounds on resize/move (debounced)
-  let saveBoundsTimeout;
-  const saveBounds = () => {
-    if (!mainWindow || mainWindow.isMinimized()) return;
-    settings.windowBounds = mainWindow.getBounds();
-    if (saveBoundsTimeout) clearTimeout(saveBoundsTimeout);
-    saveBoundsTimeout = setTimeout(() => saveSettings(), 500);
-  };
-  mainWindow.on('resize', saveBounds);
-  mainWindow.on('move', saveBounds);
 
   mainWindow.on('closed', () => {
     stopHoverTracking();
@@ -1180,7 +1430,7 @@ ipcMain.handle('open-update-installer', async (event, filePath) => {
 
 ipcMain.handle('save-settings', (event, newSettings) => {
   const previousAlwaysOnTop = settings.alwaysOnTop;
-  settings = { ...settings, ...newSettings };
+  settings = normalizeSettingsForPersistence({ ...settings, ...newSettings });
   saveSettings();
   applyWindowZOrder({
     alwaysOnTop: settings.alwaysOnTop,
@@ -1220,6 +1470,31 @@ ipcMain.handle('get-window-bounds', () => {
 
 ipcMain.handle('set-always-on-top', (event, enabled) => {
   return setAlwaysOnTopSetting(enabled);
+});
+
+
+ipcMain.handle('search-resources', async (event, query) => {
+  try {
+    return await searchResourcesLocally(query);
+  } catch (error) {
+    console.error('search-resources failed:', error);
+    return {
+      ok: false,
+      query: String(query || '').trim(),
+      results: [],
+      error: error?.message || '搜索失败',
+    };
+  }
+});
+
+ipcMain.handle('set-text-input-active', (event, active) => {
+  textInputActive = !!active;
+  applyWindowZOrder({
+    alwaysOnTop: settings.alwaysOnTop,
+    hoverMode: hoverWindowState.hoverMode,
+    interactive: hoverWindowState.interactive,
+  });
+  return textInputActive;
 });
 
 ipcMain.handle('update-hover-window', (event, nextState) => {

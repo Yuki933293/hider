@@ -38,6 +38,8 @@ export function initDom() {
   dom.urlBar = document.getElementById('url-bar');
   dom.urlInput = document.getElementById('url-input');
   dom.webview = document.getElementById('webview');
+  dom.webSearchPanel = document.getElementById('web-search-panel');
+  dom.webSourceList = document.getElementById('web-source-list');
   dom.bookmarksDropdown = document.getElementById('bookmarks-dropdown');
   dom.bookmarksList = document.getElementById('bookmarks-list');
   dom.bookmarksEmpty = document.getElementById('bookmarks-empty');
