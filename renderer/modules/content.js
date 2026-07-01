@@ -155,11 +155,25 @@ export function initContent() {
 
   // URL input
   dom.urlInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      hideSearchHistoryDropdown();
+      return;
+    }
     if (e.key === 'Enter') {
       e.preventDefault();
       navigateToUrl(dom.urlInput.value.trim());
     }
   });
+  dom.urlInput.addEventListener('focus', () => renderSearchHistoryDropdown());
+  dom.urlInput.addEventListener('input', () => renderSearchHistoryDropdown());
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#url-input-wrapper')) hideSearchHistoryDropdown();
+  });
+
+  window.api.loadSearchHistory?.().then((items) => {
+    state.searchHistory = Array.isArray(items) ? items : [];
+    renderSearchHistoryDropdown();
+  }).catch(() => {});
 
   renderWebSearchPanel('');
 
@@ -595,9 +609,88 @@ function showWebSearchPanel(query = dom.urlInput.value.trim()) {
 function hideWebSearchPanel() {
   dom.webSearchPanel?.classList.add('hidden');
   dom.app.classList.remove('search-home');
+  hideSearchHistoryDropdown();
 }
 
 let webSearchRequestId = 0;
+
+function normalizeSearchHistoryQuery(query) {
+  return String(query || '').trim().replace(/\s+/g, ' ').slice(0, 120);
+}
+
+function isSearchInputActive() {
+  return document.activeElement === dom.urlInput && state.currentMode === 'web';
+}
+
+function hideSearchHistoryDropdown() {
+  dom.searchHistoryDropdown?.classList.add('hidden');
+}
+
+function renderSearchHistoryDropdown({ force = false } = {}) {
+  if (!dom.searchHistoryDropdown || (!force && !isSearchInputActive())) return;
+  const filter = normalizeSearchHistoryQuery(dom.urlInput.value).toLowerCase();
+  const items = (state.searchHistory || [])
+    .filter((item) => !filter || item.query.toLowerCase().includes(filter))
+    .slice(0, 8);
+
+  if (!items.length) {
+    dom.searchHistoryDropdown.classList.add('hidden');
+    dom.searchHistoryDropdown.innerHTML = '';
+    return;
+  }
+
+  dom.searchHistoryDropdown.innerHTML = `
+    <div class="search-history-header">
+      <span>最近搜索</span>
+      <button type="button" class="search-history-clear">清空</button>
+    </div>
+    ${items.map((item, index) => `
+      <div class="search-history-item" data-history-index="${index}">
+        <button type="button" class="search-history-query" title="重新搜索 ${escapeHtml(item.query)}">
+          <span class="search-history-clock" aria-hidden="true">↺</span>
+          <span class="search-history-text">${escapeHtml(item.query)}</span>
+        </button>
+        <button type="button" class="search-history-remove" title="删除这条历史" aria-label="删除搜索历史">×</button>
+      </div>`).join('')}`;
+
+  dom.searchHistoryDropdown.classList.remove('hidden');
+  dom.searchHistoryDropdown.querySelector('.search-history-clear')?.addEventListener('click', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    state.searchHistory = await window.api.clearSearchHistory();
+    renderSearchHistoryDropdown({ force: true });
+  });
+  dom.searchHistoryDropdown.querySelectorAll('.search-history-item').forEach((row) => {
+    const item = items[Number(row.dataset.historyIndex)];
+    row.querySelector('.search-history-query')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dom.urlInput.value = item.query;
+      hideSearchHistoryDropdown();
+      navigateToUrl(item.query);
+    });
+    row.querySelector('.search-history-remove')?.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      state.searchHistory = await window.api.removeSearchHistoryQuery(item.query);
+      renderSearchHistoryDropdown({ force: true });
+    });
+  });
+}
+
+async function rememberSearchQuery(query) {
+  const normalized = normalizeSearchHistoryQuery(query);
+  if (!normalized || isProbablyUrl(normalized)) return;
+  const key = normalized.toLowerCase();
+  state.searchHistory = [
+    { query: normalized, updatedAt: Date.now() },
+    ...(state.searchHistory || []).filter((item) => item.query.toLowerCase() !== key),
+  ].slice(0, 50);
+  renderSearchHistoryDropdown({ force: true });
+  try {
+    state.searchHistory = await window.api.addSearchHistoryQuery(normalized);
+  } catch (e) {}
+}
 
 async function renderWebSearchPanel(query = '') {
   if (!dom.webSourceList) return;
@@ -707,6 +800,8 @@ function navigateToUrl(input) {
     return;
   }
 
+  rememberSearchQuery(input);
+  hideSearchHistoryDropdown();
   dom.webview.classList.add('hidden');
   showWebSearchPanel(input);
   dom.titleFilename.textContent = `Hider - 资源搜索：${input}`;
@@ -1546,7 +1641,7 @@ function showProRequiredToast() {
       <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
       <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
     </svg>
-    <span>此功能需要 Pro 版 — 在设置 → 帮助中激活</span>
+    <span>此功能暂未开放</span>
   `;
   document.body.appendChild(toast);
 

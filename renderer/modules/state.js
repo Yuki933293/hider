@@ -7,6 +7,7 @@ export const state = {
   currentLineIndex: 0,
   currentMode: 'file',
   bookmarks: [],
+  searchHistory: [],
   webviewReady: false,
   readerModeEnabled: false,
   readerCssKey: null,
@@ -40,6 +41,7 @@ export function initDom() {
   dom.webview = document.getElementById('webview');
   dom.webSearchPanel = document.getElementById('web-search-panel');
   dom.webSourceList = document.getElementById('web-source-list');
+  dom.searchHistoryDropdown = document.getElementById('search-history-dropdown');
   dom.bookmarksDropdown = document.getElementById('bookmarks-dropdown');
   dom.bookmarksList = document.getElementById('bookmarks-list');
   dom.bookmarksEmpty = document.getElementById('bookmarks-empty');

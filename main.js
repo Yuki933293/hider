@@ -13,6 +13,7 @@ let settingsPath;
 let progressPath;
 let bookmarksPath;
 let recentFilesPath;
+let searchHistoryPath;
 let updateDownloadDir;
 let hoverWindowState = {
   hoverMode: false,
@@ -800,6 +801,70 @@ function addRecentFile(filePath, fileName) {
   }
 }
 
+function normalizeSearchHistory(data) {
+  const source = Array.isArray(data) ? data : [];
+  const seen = new Set();
+  return source
+    .map((item) => {
+      if (typeof item === 'string') return { query: item, updatedAt: Date.now() };
+      return {
+        query: String(item?.query || '').trim(),
+        updatedAt: Number(item?.updatedAt || Date.now()),
+      };
+    })
+    .filter((item) => item.query && item.query.length <= 120)
+    .filter((item) => {
+      const key = item.query.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .slice(0, 50);
+}
+
+function loadSearchHistory() {
+  try {
+    if (fs.existsSync(searchHistoryPath)) {
+      return normalizeSearchHistory(JSON.parse(fs.readFileSync(searchHistoryPath, 'utf-8')));
+    }
+  } catch (e) {
+    console.error('Failed to load search history:', e);
+  }
+  return [];
+}
+
+function saveSearchHistory(data) {
+  const normalized = normalizeSearchHistory(data);
+  try {
+    fs.writeFileSync(searchHistoryPath, JSON.stringify(normalized, null, 2));
+  } catch (e) {
+    console.error('Failed to save search history:', e);
+  }
+  return normalized;
+}
+
+function addSearchHistoryQuery(query) {
+  const normalized = String(query || '').trim().replace(/\s+/g, ' ').slice(0, 120);
+  if (!normalized) return loadSearchHistory();
+  const key = normalized.toLowerCase();
+  const next = [
+    { query: normalized, updatedAt: Date.now() },
+    ...loadSearchHistory().filter((item) => item.query.toLowerCase() !== key),
+  ];
+  return saveSearchHistory(next);
+}
+
+function removeSearchHistoryQuery(query) {
+  const key = String(query || '').trim().toLowerCase();
+  if (!key) return loadSearchHistory();
+  return saveSearchHistory(loadSearchHistory().filter((item) => item.query.toLowerCase() !== key));
+}
+
+function clearSearchHistory() {
+  return saveSearchHistory([]);
+}
+
 // EPUB parsing: extract text from EPUB zip
 function parseEpub(filePath) {
   let zip, entries;
@@ -1350,6 +1415,7 @@ if (!gotTheLock) {
     progressPath = path.join(app.getPath('userData'), 'progress.json');
     bookmarksPath = path.join(app.getPath('userData'), 'bookmarks.json');
     recentFilesPath = path.join(app.getPath('userData'), 'recent-files.json');
+    searchHistoryPath = path.join(app.getPath('userData'), 'search-history.json');
     updateDownloadDir = path.join(app.getPath('userData'), 'updates');
     loadSettings();
     createWindow();
@@ -1550,6 +1616,22 @@ ipcMain.handle('save-bookmarks', (event, data) => {
 
 ipcMain.handle('load-recent-files', () => {
   return loadRecentFiles();
+});
+
+ipcMain.handle('load-search-history', () => {
+  return loadSearchHistory();
+});
+
+ipcMain.handle('add-search-history-query', (event, query) => {
+  return addSearchHistoryQuery(query);
+});
+
+ipcMain.handle('remove-search-history-query', (event, query) => {
+  return removeSearchHistoryQuery(query);
+});
+
+ipcMain.handle('clear-search-history', () => {
+  return clearSearchHistory();
 });
 
 ipcMain.handle('remove-recent-file', (event, filePath) => {
