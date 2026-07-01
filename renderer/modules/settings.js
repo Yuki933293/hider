@@ -749,24 +749,6 @@ export function initSettings() {
   initUpdateUi();
 }
 
-let immersiveResizeTimer = null;
-
-function scheduleImmersiveWindowResize(height) {
-  window.clearTimeout(immersiveResizeTimer);
-  if (!isImmersiveFileMode()) return;
-
-  immersiveResizeTimer = window.setTimeout(async () => {
-    try {
-      const bounds = await window.api.getWindowBounds();
-      const width = Math.max(240, Math.round(bounds?.width || window.innerWidth || 480));
-      const targetHeight = Math.max(24, Math.ceil(height));
-      await window.api.setWindowSize({ width, height: targetHeight });
-    } catch (e) {
-      console.warn('Failed to resize immersive window:', e);
-    }
-  }, 80);
-}
-
 // ============ Apply Settings ============
 export function applySettings() {
   const root = document.documentElement;
@@ -789,7 +771,6 @@ export function applySettings() {
   root.style.setProperty('--immersive-line-height', immersiveLineHeight);
   const immersiveHeight = Math.ceil(computedLineHeight * immersiveLines);
   root.style.setProperty('--immersive-height', `${immersiveHeight}px`);
-  scheduleImmersiveWindowResize(immersiveHeight);
 
   const bgRgb = hexToRgb(state.settings.bgColor);
   if (bgRgb) {
