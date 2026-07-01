@@ -42,7 +42,6 @@ let settings = {
   lineHeight: 1.8,
   hoverMode: false,
   alwaysOnTop: false,
-  hideTaskbarIcon: false,
   visibleLines: 0,
   autoHideOnLeave: false,
   hideBg: false,
@@ -1120,29 +1119,6 @@ function startHoverTracking() {
   }, 150);
 }
 
-function applySkipTaskbarSetting() {
-  if (!mainWindow || process.platform !== 'win32') return;
-  mainWindow.setSkipTaskbar(!!settings.hideTaskbarIcon);
-}
-
-function emitHideTaskbarIconChanged() {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  mainWindow.webContents.send('hide-taskbar-icon-changed', settings.hideTaskbarIcon);
-}
-
-function setHideTaskbarIconSetting(enabled) {
-  if (process.platform !== 'win32') return false;
-
-  const nextValue = !!enabled;
-  if (settings.hideTaskbarIcon === nextValue) return settings.hideTaskbarIcon;
-
-  settings.hideTaskbarIcon = nextValue;
-  applySkipTaskbarSetting();
-  saveSettings();
-  emitHideTaskbarIconChanged();
-  return settings.hideTaskbarIcon;
-}
-
 function setAlwaysOnTopSetting(enabled) {
   const nextValue = !!enabled;
   if (settings.alwaysOnTop === nextValue) return settings.alwaysOnTop;
@@ -1174,7 +1150,7 @@ function createWindow() {
     transparent: true,
     frame: false,
     alwaysOnTop: settings.alwaysOnTop,
-    skipTaskbar: process.platform === 'win32' && !!settings.hideTaskbarIcon,
+    skipTaskbar: false,
     hasShadow: false,
     resizable: true,
     minimizable: true,
@@ -1191,7 +1167,6 @@ function createWindow() {
     hoverMode: hoverWindowState.hoverMode,
     interactive: hoverWindowState.interactive,
   });
-  applySkipTaskbarSetting();
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
   // Intercept new windows from webview: navigate in-place instead of opening new window
@@ -1247,7 +1222,7 @@ function restoreWindow() {
   if (process.platform === 'darwin' && app.dock) {
     app.dock.show();
   }
-  applySkipTaskbarSetting();
+  mainWindow.setSkipTaskbar(false);
   mainWindow.show();
   isVisible = true;
   if (!tray || tray.isDestroyed()) {
@@ -1532,7 +1507,6 @@ ipcMain.handle('open-update-installer', async (event, filePath) => {
 
 ipcMain.handle('save-settings', (event, newSettings) => {
   const previousAlwaysOnTop = settings.alwaysOnTop;
-  const previousHideTaskbarIcon = settings.hideTaskbarIcon;
   settings = normalizeSettingsForPersistence({ ...settings, ...newSettings });
   saveSettings();
   applyWindowZOrder({
@@ -1543,10 +1517,6 @@ ipcMain.handle('save-settings', (event, newSettings) => {
   if (previousAlwaysOnTop !== settings.alwaysOnTop) {
     refreshTrayMenu();
     emitAlwaysOnTopChanged();
-  }
-  if (previousHideTaskbarIcon !== settings.hideTaskbarIcon) {
-    applySkipTaskbarSetting();
-    emitHideTaskbarIconChanged();
   }
   const shortcuts = registerShortcuts();
   return { ...settings, shortcutStatus: shortcuts };
@@ -1577,10 +1547,6 @@ ipcMain.handle('get-window-bounds', () => {
 
 ipcMain.handle('set-always-on-top', (event, enabled) => {
   return setAlwaysOnTopSetting(enabled);
-});
-
-ipcMain.handle('set-hide-taskbar-icon', (event, enabled) => {
-  return setHideTaskbarIconSetting(enabled);
 });
 
 

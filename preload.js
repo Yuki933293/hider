@@ -12,7 +12,6 @@ contextBridge.exposeInMainWorld('api', {
   saveProgressSync: (data) => ipcRenderer.sendSync('save-progress-sync', data),
   toggleVisibility: () => ipcRenderer.invoke('toggle-visibility'),
   setAlwaysOnTop: (enabled) => ipcRenderer.invoke('set-always-on-top', enabled),
-  setHideTaskbarIcon: (enabled) => ipcRenderer.invoke('set-hide-taskbar-icon', enabled),
   setTextInputActive: (active) => ipcRenderer.invoke('set-text-input-active', active),
   searchResources: (query) => ipcRenderer.invoke('search-resources', query),
   minimizeWindow: () => ipcRenderer.invoke('minimize-window'),
@@ -52,9 +51,6 @@ contextBridge.exposeInMainWorld('api', {
   },
   onAlwaysOnTopChanged: (callback) => {
     ipcRenderer.on('always-on-top-changed', (event, enabled) => callback(enabled));
-  },
-  onHideTaskbarIconChanged: (callback) => {
-    ipcRenderer.on('hide-taskbar-icon-changed', (event, enabled) => callback(enabled));
   },
   onToggleSettings: (callback) => {
     ipcRenderer.on('toggle-settings', () => callback());

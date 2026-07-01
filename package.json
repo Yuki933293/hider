@@ -8,10 +8,10 @@
     "url": "https://github.com/Yuki933293/hider.git"
   },
   "scripts": {
-    "start": "electron .",
-    "build": "electron-builder",
-    "build:mac": "electron-builder --mac",
-    "build:win": "electron-builder --win"
+    "start": "unset ELECTRON_RUN_AS_NODE && electron .",
+    "build": "unset ELECTRON_RUN_AS_NODE && electron-builder",
+    "build:mac": "unset ELECTRON_RUN_AS_NODE && electron-builder --mac",
+    "build:win": "unset ELECTRON_RUN_AS_NODE && electron-builder --win"
   },
   "keywords": [],
   "author": "",
