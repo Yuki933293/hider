@@ -390,6 +390,12 @@ function syncAlwaysOnTopUi() {
   }
 }
 
+function syncHideTaskbarIconUi() {
+  if (controls.hideTaskbarIcon) {
+    controls.hideTaskbarIcon.checked = !!state.settings.hideTaskbarIcon;
+  }
+}
+
 function syncImmersiveUi() {
   const immersiveFontSize = state.settings.immersiveFontSize || state.settings.fontSize || 16;
   const immersiveFontColor = state.settings.immersiveFontColor || state.settings.fontColor || '#333333';
@@ -505,6 +511,34 @@ export function applyExternalAlwaysOnTop(enabled) {
   syncAlwaysOnTopUi();
 }
 
+export async function setHideTaskbarIcon(enabled, { persist = true } = {}) {
+  if (window.api.platform !== 'win32') return false;
+
+  const previousValue = !!state.settings.hideTaskbarIcon;
+  const nextValue = !!enabled;
+
+  state.settings.hideTaskbarIcon = nextValue;
+  syncHideTaskbarIconUi();
+
+  if (!persist) return nextValue;
+
+  try {
+    const confirmed = await window.api.setHideTaskbarIcon(nextValue);
+    state.settings.hideTaskbarIcon = !!confirmed;
+  } catch (error) {
+    console.error('Failed to update hide-taskbar-icon:', error);
+    state.settings.hideTaskbarIcon = previousValue;
+  }
+
+  syncHideTaskbarIconUi();
+  return state.settings.hideTaskbarIcon;
+}
+
+export function applyExternalHideTaskbarIcon(enabled) {
+  state.settings.hideTaskbarIcon = !!enabled;
+  syncHideTaskbarIconUi();
+}
+
 export function initSettings() {
   controls = {
     fontSize: document.getElementById('set-font-size'),
@@ -525,8 +559,14 @@ export function initSettings() {
     immersiveFontOpacity: document.getElementById('set-immersive-font-opacity'),
     immersiveLineHeight: document.getElementById('set-immersive-line-height'),
     alwaysOnTop: document.getElementById('set-always-on-top'),
+    hideTaskbarIcon: document.getElementById('set-hide-taskbar-icon'),
     updateAutoCheck: document.getElementById('set-update-auto-check'),
   };
+
+  const hideTaskbarRow = document.getElementById('setting-hide-taskbar-row');
+  if (hideTaskbarRow && window.api.platform !== 'win32') {
+    hideTaskbarRow.hidden = true;
+  }
 
   valueDisplays = {
     fontSize: document.getElementById('val-font-size'),
@@ -684,6 +724,12 @@ export function initSettings() {
   controls.alwaysOnTop.addEventListener('change', (e) => {
     setAlwaysOnTop(e.target.checked);
   });
+
+  if (controls.hideTaskbarIcon) {
+    controls.hideTaskbarIcon.addEventListener('change', (e) => {
+      setHideTaskbarIcon(e.target.checked);
+    });
+  }
 
   // ============ Tab navigation ============
   document.querySelectorAll('.tab-btn').forEach((btn) => {
@@ -921,6 +967,7 @@ export function syncControlsToSettings() {
   renderRecentTextColors();
   syncImmersiveUi();
   syncAlwaysOnTopUi();
+  syncHideTaskbarIconUi();
 
   const toggleBtn = document.getElementById('set-toggle-hotkey');
   const bossBtn = document.getElementById('set-boss-hotkey');
