@@ -20,6 +20,10 @@ let hoverWindowState = {
   forceInteractive: false,
   interactive: true,
 };
+let immersiveMouseState = {
+  enabled: false,
+  interactive: true,
+};
 let hoverPollTimer = null;
 let shortcutRegistrationStatus = {
   ok: true,
@@ -44,7 +48,7 @@ let settings = {
   textOnly: false,
   immersiveMode: false,
   rememberImmersiveMode: false,
-  immersiveLines: 3,
+  immersiveLines: 1,
   immersiveFontSize: 16,
   immersiveFontColor: '#333333',
   immersiveFontOpacity: 1.0,
@@ -1031,10 +1035,17 @@ function htmlToText(html) {
     .trim();
 }
 
-function applyWindowZOrder({ alwaysOnTop = settings.alwaysOnTop, hoverMode = hoverWindowState.hoverMode, interactive = hoverWindowState.interactive } = {}) {
+function applyWindowZOrder({
+  alwaysOnTop = settings.alwaysOnTop,
+  hoverMode = hoverWindowState.hoverMode,
+  interactive = hoverWindowState.interactive,
+  immersiveMouse = immersiveMouseState,
+} = {}) {
   if (!mainWindow) return;
 
-  const clickThrough = hoverMode && !interactive;
+  const hoverClickThrough = hoverMode && !interactive;
+  const immersiveClickThrough = immersiveMouse.enabled && !immersiveMouse.interactive;
+  const clickThrough = hoverClickThrough || immersiveClickThrough;
 
   mainWindow.setIgnoreMouseEvents(clickThrough, { forward: true });
   const shouldFloatAboveApps = alwaysOnTop && !textInputActive;
@@ -1561,6 +1572,20 @@ ipcMain.handle('set-text-input-active', (event, active) => {
     interactive: hoverWindowState.interactive,
   });
   return textInputActive;
+});
+
+ipcMain.handle('set-immersive-mouse-region', (event, nextState = {}) => {
+  immersiveMouseState = {
+    enabled: !!nextState.enabled,
+    interactive: nextState.interactive !== false,
+  };
+  applyWindowZOrder({
+    alwaysOnTop: settings.alwaysOnTop,
+    hoverMode: hoverWindowState.hoverMode,
+    interactive: hoverWindowState.interactive,
+    immersiveMouse: immersiveMouseState,
+  });
+  return { ...immersiveMouseState };
 });
 
 ipcMain.handle('update-hover-window', (event, nextState) => {

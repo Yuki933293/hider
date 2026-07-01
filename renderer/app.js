@@ -149,7 +149,7 @@ function handleKeyboardShortcuts(e) {
 
   // Immersive mode keeps every keyboard movement aligned to full text rows.
   if (isImmersiveFileMode() && state.currentFile) {
-    const pageLines = Math.max(1, state.settings.immersiveLines || 3);
+    const pageLines = Math.max(1, state.settings.immersiveLines || 1);
     if (e.key === 'ArrowDown' || e.key === 'j') {
       e.preventDefault();
       navigateImmersiveLines(1);
@@ -295,7 +295,8 @@ function endWindowDrag() {
 document.addEventListener('mousedown', async (e) => {
   if (e.button !== 0) return;
 
-  if (isImmersiveFileMode() && e.button === 0 && e.target.closest('#text-content, #placeholder')) {
+  if (isImmersiveFileMode()) {
+    if (!e.target.closest('#reader-content')) return;
     e.preventDefault();
   } else {
     if (e.target.closest('button, input, select, textarea, label, #settings-panel, webview, #bookmarks-dropdown, #toc-dropdown')) return;

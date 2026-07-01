@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('api', {
   minimizeWindow: () => ipcRenderer.invoke('minimize-window'),
   closeWindow: () => ipcRenderer.invoke('close-window'),
   setWindowSize: (size) => ipcRenderer.invoke('set-window-size', size),
+  setImmersiveMouseRegion: (state) => ipcRenderer.invoke('set-immersive-mouse-region', state),
   updateHoverWindow: (state) => ipcRenderer.invoke('update-hover-window', state),
   isMouseInWindow: () => ipcRenderer.invoke('is-mouse-in-window'),
   startDrag: () => ipcRenderer.invoke('start-drag'),

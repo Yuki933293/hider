@@ -316,6 +316,9 @@ export function initContent() {
   });
 
   dom.readerContent.addEventListener('wheel', handleImmersiveWheel, { passive: false });
+  document.addEventListener('mousemove', handleImmersivePointerMove, true);
+  document.addEventListener('mouseleave', handleImmersivePointerLeave, true);
+  window.addEventListener('blur', handleImmersivePointerLeave);
 
   // Load bookmarks
   window.api.loadBookmarks().then((data) => {
@@ -807,12 +810,25 @@ function navigateToUrl(input) {
   dom.titleFilename.textContent = `Hider - 资源搜索：${input}`;
 }
 
-const IMMERSIVE_WHEEL_ANIMATION_MS = 175;
+const IMMERSIVE_DEFAULT_LINES = 1;
+const IMMERSIVE_WHEEL_ANIMATION_MS = 190;
+const IMMERSIVE_WHEEL_GESTURE_IDLE_MS = 180;
+const IMMERSIVE_MIN_PADDING_Y = 6;
 
 let immersiveWheelFrame = null;
 let immersiveScrollAnimationFrame = null;
-let immersiveWheelDirection = 0;
-let immersiveWheelStepLines = 1;
+let immersiveWheelGestureTimer = null;
+let immersiveWheelGestureLocked = false;
+let immersiveLayoutFrame = null;
+let immersiveMouseRegion = {
+  enabled: false,
+  interactive: true,
+};
+let lastImmersivePointer = null;
+let immersiveLineMetrics = {
+  lineStep: 1,
+  paddingY: IMMERSIVE_MIN_PADDING_Y,
+};
 
 function cancelImmersiveScrollAnimation() {
   if (immersiveScrollAnimationFrame !== null) {
@@ -822,8 +838,11 @@ function cancelImmersiveScrollAnimation() {
 }
 
 function resetImmersiveWheelGesture() {
-  immersiveWheelDirection = 0;
-  immersiveWheelStepLines = 1;
+  immersiveWheelGestureLocked = false;
+  if (immersiveWheelGestureTimer !== null) {
+    window.clearTimeout(immersiveWheelGestureTimer);
+    immersiveWheelGestureTimer = null;
+  }
   if (immersiveWheelFrame !== null) {
     window.cancelAnimationFrame(immersiveWheelFrame);
     immersiveWheelFrame = null;
@@ -831,32 +850,129 @@ function resetImmersiveWheelGesture() {
   cancelImmersiveScrollAnimation();
 }
 
-function getImmersiveLineHeightPx() {
+function getImmersiveVisibleLines() {
+  return Math.max(1, Math.min(8, Number(state.settings.immersiveLines) || IMMERSIVE_DEFAULT_LINES));
+}
+
+function getImmersiveFallbackLineHeightPx() {
   const fontSize = state.settings.immersiveFontSize || state.settings.fontSize || 16;
   const lineHeight = state.settings.immersiveLineHeight || state.settings.lineHeight || 1.8;
   return Math.max(1, fontSize * lineHeight);
 }
 
+function alignImmersivePx(value) {
+  return Math.max(1, Math.ceil(Number(value) || getImmersiveFallbackLineHeightPx()));
+}
+
+function getImmersiveLineHeightPx() {
+  return Math.max(1, immersiveLineMetrics.lineStep || alignImmersivePx(getImmersiveFallbackLineHeightPx()));
+}
+
+function measureImmersiveLineStep() {
+  const source = dom.textContent?.classList.contains('active')
+    ? dom.textContent
+    : dom.placeholder?.querySelector('p') || dom.textContent;
+  if (!source || !document.body) {
+    return alignImmersivePx(getImmersiveFallbackLineHeightPx());
+  }
+
+  const computed = window.getComputedStyle(source);
+  const probe = document.createElement('div');
+  const width = Math.max(1, Math.floor(dom.readerContent?.clientWidth || source.clientWidth || 300) - 16);
+
+  Object.assign(probe.style, {
+    position: 'absolute',
+    visibility: 'hidden',
+    pointerEvents: 'none',
+    left: '-9999px',
+    top: '-9999px',
+    width: `${width}px`,
+    fontFamily: computed.fontFamily,
+    fontSize: computed.fontSize,
+    fontStyle: computed.fontStyle,
+    fontWeight: computed.fontWeight,
+    letterSpacing: computed.letterSpacing,
+    lineHeight: computed.lineHeight === 'normal'
+      ? String(state.settings.immersiveLineHeight || state.settings.lineHeight || 1.8)
+      : computed.lineHeight,
+    whiteSpace: 'pre-wrap',
+    wordBreak: computed.wordBreak,
+    overflowWrap: computed.overflowWrap,
+    wordWrap: computed.wordWrap,
+  });
+
+  probe.innerHTML = '<span data-line-a>国M</span><br><span data-line-b>国M</span>';
+  document.body.appendChild(probe);
+
+  const first = probe.querySelector('[data-line-a]');
+  const second = probe.querySelector('[data-line-b]');
+  const firstRect = first?.getBoundingClientRect();
+  const secondRect = second?.getBoundingClientRect();
+  const measured = firstRect && secondRect ? secondRect.top - firstRect.top : 0;
+  const parsed = Number.parseFloat(computed.lineHeight);
+
+  probe.remove();
+  return alignImmersivePx(measured || parsed || getImmersiveFallbackLineHeightPx());
+}
+
+function measureImmersiveLineMetrics() {
+  const fontSize = state.settings.immersiveFontSize || state.settings.fontSize || 16;
+  const lineStep = measureImmersiveLineStep();
+  const paddingY = Math.max(IMMERSIVE_MIN_PADDING_Y, Math.ceil(fontSize * 0.35));
+  return { lineStep, paddingY };
+}
+
+function applyImmersiveLineMetrics(metrics) {
+  immersiveLineMetrics = metrics;
+  const lines = getImmersiveVisibleLines();
+  const height = metrics.lineStep * lines + metrics.paddingY * 2;
+  const root = document.documentElement;
+  root.style.setProperty('--immersive-line-height-px', `${metrics.lineStep}px`);
+  root.style.setProperty('--immersive-padding-y', `${metrics.paddingY}px`);
+  root.style.setProperty('--immersive-height', `${height}px`);
+}
+
+function getSnappedImmersiveTop(rawTop) {
+  const lineHeight = getImmersiveLineHeightPx();
+  const el = dom.readerContent;
+  const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
+  const snapped = Math.round(rawTop / lineHeight) * lineHeight;
+  return Math.max(0, Math.min(snapped, maxScrollTop));
+}
+
 function snapImmersiveScrollToLine({ save = true } = {}) {
   if (!isImmersiveFileMode()) return;
   const el = dom.readerContent;
-  const lineHeight = getImmersiveLineHeightPx();
-  const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
-  const snapped = Math.max(0, Math.min(Math.round(el.scrollTop / lineHeight) * lineHeight, maxScrollTop));
-  el.scrollTop = snapped;
+  el.scrollTop = getSnappedImmersiveTop(el.scrollTop);
   updateProgress();
   if (save) debounceSaveProgress();
 }
 
+function releaseImmersiveWheelGesture() {
+  immersiveWheelGestureLocked = false;
+  immersiveWheelGestureTimer = null;
+}
+
+function holdImmersiveWheelGesture() {
+  if (immersiveWheelGestureTimer !== null) {
+    window.clearTimeout(immersiveWheelGestureTimer);
+  }
+  immersiveWheelGestureTimer = window.setTimeout(
+    releaseImmersiveWheelGesture,
+    IMMERSIVE_WHEEL_GESTURE_IDLE_MS,
+  );
+}
+
 function animateImmersiveScrollTo(targetTop, { save = true } = {}) {
   const el = dom.readerContent;
+  const snappedTarget = getSnappedImmersiveTop(targetTop);
   const startTop = el.scrollTop;
-  const distance = targetTop - startTop;
+  const distance = snappedTarget - startTop;
 
   cancelImmersiveScrollAnimation();
 
   if (Math.abs(distance) < 0.5) {
-    el.scrollTop = targetTop;
+    el.scrollTop = snappedTarget;
     updateProgress();
     if (save) debounceSaveProgress();
     return true;
@@ -875,7 +991,7 @@ function animateImmersiveScrollTo(targetTop, { save = true } = {}) {
       return;
     }
 
-    el.scrollTop = targetTop;
+    el.scrollTop = snappedTarget;
     immersiveScrollAnimationFrame = null;
     updateProgress();
     if (save) debounceSaveProgress();
@@ -887,13 +1003,11 @@ function animateImmersiveScrollTo(targetTop, { save = true } = {}) {
 
 export function navigateImmersiveLines(deltaLines, { save = true, animate = false } = {}) {
   if (!isImmersiveFileMode() || !state.currentFile) return false;
-  if (animate && immersiveScrollAnimationFrame !== null) return false;
 
   const el = dom.readerContent;
   const lineHeight = getImmersiveLineHeightPx();
-  const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
   const currentLine = Math.round(el.scrollTop / lineHeight);
-  const nextTop = Math.max(0, Math.min((currentLine + deltaLines) * lineHeight, maxScrollTop));
+  const nextTop = getSnappedImmersiveTop((currentLine + deltaLines) * lineHeight);
 
   if (animate) {
     return animateImmersiveScrollTo(nextTop, { save });
@@ -920,15 +1034,96 @@ function handleImmersiveWheel(e) {
   const direction = Math.sign(deltaY);
   if (!direction) return;
 
-  immersiveWheelDirection = direction;
-  immersiveWheelStepLines = e.shiftKey ? Math.max(1, state.settings.immersiveLines || 3) : 1;
+  holdImmersiveWheelGesture();
 
-  if (immersiveWheelFrame !== null || immersiveScrollAnimationFrame !== null) return;
+  if (immersiveWheelGestureLocked || immersiveWheelFrame !== null) return;
+  immersiveWheelGestureLocked = true;
 
   immersiveWheelFrame = window.requestAnimationFrame(() => {
     immersiveWheelFrame = null;
-    const moved = navigateImmersiveLines(immersiveWheelDirection * immersiveWheelStepLines, { animate: true });
+    const stepLines = e.shiftKey ? getImmersiveVisibleLines() : 1;
+    const moved = navigateImmersiveLines(direction * stepLines, { animate: true });
     if (!moved) resetImmersiveWheelGesture();
+  });
+}
+
+function setImmersiveMouseRegion(enabled, interactive) {
+  const next = { enabled: !!enabled, interactive: interactive !== false };
+  if (
+    immersiveMouseRegion.enabled === next.enabled &&
+    immersiveMouseRegion.interactive === next.interactive
+  ) {
+    return;
+  }
+
+  immersiveMouseRegion = next;
+  const updatePromise = window.api?.setImmersiveMouseRegion?.(next);
+  if (updatePromise?.catch) {
+    updatePromise.catch((error) => {
+      console.warn('Failed to update immersive mouse region:', error);
+    });
+  }
+}
+
+function isPointerInsideImmersiveRegion(point) {
+  if (!point || !dom.readerContent) return true;
+  const rect = dom.readerContent.getBoundingClientRect();
+  return (
+    point.x >= rect.left &&
+    point.x <= rect.right &&
+    point.y >= rect.top &&
+    point.y <= rect.bottom
+  );
+}
+
+export function syncImmersiveMouseRegionFromEvent(event) {
+  if (event && Number.isFinite(event.clientX) && Number.isFinite(event.clientY)) {
+    lastImmersivePointer = { x: event.clientX, y: event.clientY };
+  }
+
+  if (!isImmersiveFileMode()) {
+    setImmersiveMouseRegion(false, true);
+    return;
+  }
+
+  setImmersiveMouseRegion(true, isPointerInsideImmersiveRegion(lastImmersivePointer));
+}
+
+function handleImmersivePointerMove(event) {
+  syncImmersiveMouseRegionFromEvent(event);
+}
+
+function handleImmersivePointerLeave() {
+  if (isImmersiveFileMode()) {
+    setImmersiveMouseRegion(true, false);
+  } else {
+    setImmersiveMouseRegion(false, true);
+  }
+}
+
+function refreshImmersiveLayoutNow({ snap = false } = {}) {
+  if (!isImmersiveFileMode()) {
+    setImmersiveMouseRegion(false, true);
+    return;
+  }
+
+  applyImmersiveLineMetrics(measureImmersiveLineMetrics());
+  if (snap) {
+    snapImmersiveScrollToLine({ save: false });
+  }
+  syncImmersiveMouseRegionFromEvent();
+}
+
+export function scheduleImmersiveLayoutRefresh({ snap = false } = {}) {
+  if (immersiveLayoutFrame !== null) {
+    window.cancelAnimationFrame(immersiveLayoutFrame);
+  }
+
+  immersiveLayoutFrame = window.requestAnimationFrame(() => {
+    immersiveLayoutFrame = window.requestAnimationFrame(() => {
+      immersiveLayoutFrame = null;
+      refreshImmersiveLayoutNow({ snap });
+    });
   });
 }
 
@@ -1004,7 +1199,8 @@ export function scrollReaderToLineIndex(lineIndex, { save = true } = {}) {
     const el = dom.readerContent;
     const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
     const ratio = targetLineIndex / Math.max(state.lines.length - 1, 1);
-    el.scrollTop = Math.round(ratio * maxScrollTop);
+    const targetTop = Math.round(ratio * maxScrollTop);
+    el.scrollTop = isImmersiveFileMode() ? getSnappedImmersiveTop(targetTop) : targetTop;
     state.pendingScrollLineIndex = null;
     updateProgress();
     if (save) {
@@ -1043,7 +1239,8 @@ function restoreScrollPosition(saved) {
       nextScrollTop = Math.round(Number(saved.percent) * maxScrollTop);
     }
 
-    el.scrollTop = Math.max(0, Math.min(nextScrollTop, maxScrollTop));
+    const clampedTop = Math.max(0, Math.min(nextScrollTop, maxScrollTop));
+    el.scrollTop = isImmersiveFileMode() ? getSnappedImmersiveTop(clampedTop) : clampedTop;
     updateProgress();
   });
 }
@@ -1226,6 +1423,9 @@ export function showContent(data) {
   state.currentLineIndex = 0;
   state.toc = buildToc(data);
   renderToc();
+  if (isImmersiveFileMode()) {
+    scheduleImmersiveLayoutRefresh({ snap: false });
+  }
 
   const saved = data.scrollPosition;
   if (saved) {

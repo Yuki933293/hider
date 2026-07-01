@@ -18,6 +18,9 @@
   --accent-light: rgba(59, 130, 246, 0.1);
   --radius: 8px;
   --panel-width: 320px;
+  --immersive-line-height-px: 29px;
+  --immersive-padding-y: 6px;
+  --immersive-height: 41px;
 }
 
 html, body {
@@ -2160,8 +2163,10 @@ input[type="color"]::-webkit-color-swatch {
   display: block !important;
   width: 100%;
   height: var(--immersive-height);
-  padding: 0 8px;
+  padding: var(--immersive-padding-y) 8px;
   overflow-y: auto !important;
+  overscroll-behavior: contain;
+  scroll-behavior: auto;
   background: transparent !important;
   cursor: default;
   user-select: none;
@@ -2170,18 +2175,18 @@ input[type="color"]::-webkit-color-swatch {
 
 #app.immersive-mode #text-content {
   display: block;
-  min-height: var(--immersive-height);
+  min-height: calc(var(--immersive-height) - var(--immersive-padding-y) * 2);
   font-size: var(--immersive-font-size);
   color: var(--immersive-font-color);
   opacity: var(--immersive-font-opacity);
-  line-height: var(--immersive-line-height);
+  line-height: var(--immersive-line-height-px);
   user-select: none;
   -webkit-user-select: none;
 }
 
 #app.immersive-mode #placeholder {
   height: var(--immersive-height);
-  padding: 0 8px;
+  padding: var(--immersive-padding-y) 8px;
   align-items: flex-start;
   gap: 2px;
   color: var(--immersive-font-color);
@@ -2200,7 +2205,7 @@ input[type="color"]::-webkit-color-swatch {
 
 #app.immersive-mode #placeholder p {
   font-size: var(--immersive-font-size);
-  line-height: var(--immersive-line-height);
+  line-height: var(--immersive-line-height-px);
 }
 
 #app.immersive-mode #placeholder .shortcut-hint {

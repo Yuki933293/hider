@@ -1,6 +1,6 @@
 // Settings panel, presets, hotkeys, applySettings
 import { state, dom, hexToRgb, isColorDark, formatHotkey } from './state.js';
-import { updateVisibleLines, updateProgress, convertReadingPosition, applyReaderMode, toggleReaderMode, getSiteRule, getCurrentHostname, isBuiltinSite, isLineLimitedMode, isImmersiveFileMode, switchMode, getCurrentReadingLineIndex, scrollReaderToLineIndex, setLineLimitedPosition } from './content.js';
+import { updateVisibleLines, updateProgress, convertReadingPosition, applyReaderMode, toggleReaderMode, getSiteRule, getCurrentHostname, isBuiltinSite, isLineLimitedMode, isImmersiveFileMode, switchMode, getCurrentReadingLineIndex, scrollReaderToLineIndex, setLineLimitedPosition, scheduleImmersiveLayoutRefresh, syncImmersiveMouseRegionFromEvent } from './content.js';
 import { syncHoverMode } from './hover.js';
 
 let controls = {};
@@ -403,7 +403,7 @@ function syncImmersiveUi() {
     controls.rememberImmersiveMode.checked = !!state.settings.rememberImmersiveMode;
   }
   if (controls.immersiveLines) {
-    controls.immersiveLines.value = state.settings.immersiveLines || 3;
+    controls.immersiveLines.value = state.settings.immersiveLines || 1;
   }
   if (controls.immersiveFontSize) {
     controls.immersiveFontSize.value = immersiveFontSize;
@@ -419,7 +419,7 @@ function syncImmersiveUi() {
   }
   const display = document.getElementById('val-immersive-lines');
   if (display) {
-    display.textContent = `${state.settings.immersiveLines || 3} 行`;
+    display.textContent = `${state.settings.immersiveLines || 1} 行`;
   }
   if (valueDisplays.immersiveFontSize) {
     valueDisplays.immersiveFontSize.textContent = `${immersiveFontSize}px`;
@@ -752,12 +752,12 @@ export function initSettings() {
 // ============ Apply Settings ============
 export function applySettings() {
   const root = document.documentElement;
-  const immersiveLines = Math.max(1, Math.min(8, state.settings.immersiveLines || 3));
+  const immersiveLines = Math.max(1, Math.min(8, state.settings.immersiveLines || 1));
   const immersiveFontSize = state.settings.immersiveFontSize || state.settings.fontSize || 16;
   const immersiveFontColor = state.settings.immersiveFontColor || state.settings.fontColor || '#333333';
   const immersiveFontOpacity = state.settings.immersiveFontOpacity ?? state.settings.fontOpacity ?? 1;
   const immersiveLineHeight = state.settings.immersiveLineHeight || state.settings.lineHeight || 1.8;
-  const computedLineHeight = immersiveFontSize * immersiveLineHeight;
+  const computedLineHeight = Math.ceil(immersiveFontSize * immersiveLineHeight);
   root.style.setProperty('--font-size', `${state.settings.fontSize}px`);
   root.style.setProperty('--font-color', state.settings.fontColor);
   root.style.setProperty('--font-opacity', state.settings.fontOpacity);
@@ -769,7 +769,10 @@ export function applySettings() {
   root.style.setProperty('--immersive-font-color', immersiveFontColor);
   root.style.setProperty('--immersive-font-opacity', immersiveFontOpacity);
   root.style.setProperty('--immersive-line-height', immersiveLineHeight);
-  const immersiveHeight = Math.ceil(computedLineHeight * immersiveLines);
+  root.style.setProperty('--immersive-line-height-px', `${computedLineHeight}px`);
+  const immersivePaddingY = Math.max(6, Math.ceil(immersiveFontSize * 0.35));
+  const immersiveHeight = Math.ceil(computedLineHeight * immersiveLines + immersivePaddingY * 2);
+  root.style.setProperty('--immersive-padding-y', `${immersivePaddingY}px`);
   root.style.setProperty('--immersive-height', `${immersiveHeight}px`);
 
   const bgRgb = hexToRgb(state.settings.bgColor);
@@ -847,6 +850,11 @@ export function applySettings() {
   dom.app.classList.toggle('text-only-mode', !!state.settings.textOnly);
   dom.app.classList.toggle('immersive-mode', isImmersiveFileMode());
   dom.app.classList.toggle('immersive-empty', isImmersiveFileMode() && !state.currentFile);
+  if (isImmersiveFileMode()) {
+    scheduleImmersiveLayoutRefresh({ snap: true });
+  } else {
+    syncImmersiveMouseRegionFromEvent();
+  }
   syncImmersiveUi();
 
   // Inject/remove CSS to hide webview scrollbars in text-only mode
@@ -1233,7 +1241,7 @@ export function renderCustomPresets() {
     const opacityInfo = `${Math.round((preset.fontOpacity ?? 1) * 100)}%`;
     const tags = [];
     if (preset.hoverMode) tags.push('悬停');
-    if (preset.immersiveMode) tags.push(`沉浸${preset.immersiveLines || 3}行`);
+    if (preset.immersiveMode) tags.push(`沉浸${preset.immersiveLines || 1}行`);
     if (preset.hideBg) tags.push('无背景');
     if (preset.visibleLines > 0) tags.push(`${preset.visibleLines}行`);
 
