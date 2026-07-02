@@ -158,7 +158,7 @@
           </div>
           <p>拖入文件或点击文件夹图标打开</p>
           <p class="shortcut-hint">支持格式：.txt .md .epub</p>
-          <p class="shortcut-hint">显隐切换：Ctrl+Shift+H | 老板键：Ctrl+Shift+X</p>
+          <p class="shortcut-hint">隐藏/显示应用：Ctrl+Shift+H</p>
           <p class="shortcut-hint immersive-hint">沉浸模式：Ctrl+O 打开文件 | Esc 退出</p>
           <div id="recent-files"></div>
         </div>
@@ -451,14 +451,14 @@
                 </label>
               </div>
             </div>
-            <div class="setting-row" id="setting-hide-taskbar-row">
-              <label>隐藏任务栏图标</label>
+            <div class="setting-row">
+              <label>隐藏系统图标</label>
               <div class="setting-control">
                 <label class="toggle">
-                  <input type="checkbox" id="set-hide-taskbar-icon">
+                  <input type="checkbox" id="set-hide-app-icon">
                   <span class="toggle-slider"></span>
                 </label>
-                <span class="setting-desc">运行时不显示任务栏图标，可通过托盘或快捷键操作</span>
+                <span class="setting-desc">隐藏 Dock / 任务栏 / 菜单栏图标</span>
               </div>
             </div>
           </div>
@@ -473,15 +473,9 @@
           <div class="settings-group">
             <h4>快捷键设置</h4>
             <div class="setting-row">
-              <label>显隐切换</label>
+              <label>隐藏/显示应用</label>
               <div class="setting-control">
                 <div class="hotkey-input" id="set-toggle-hotkey" data-key="toggleHotkey" tabindex="0">Ctrl+Shift+H</div>
-              </div>
-            </div>
-            <div class="setting-row">
-              <label>老板键</label>
-              <div class="setting-control">
-                <div class="hotkey-input" id="set-boss-hotkey" data-key="bossHotkey" tabindex="0">Ctrl+Shift+X</div>
               </div>
             </div>
             <div class="setting-row">
@@ -551,8 +545,7 @@
               <div class="help-row"><kbd>PgUp</kbd><span>向上翻页</span></div>
               <div class="help-row"><kbd>上/下 / J/K</kbd><span>精读模式切段</span></div>
               <div class="help-row"><kbd>Ctrl + / -</kbd><span>放大 / 缩小字体</span></div>
-              <div class="help-row"><kbd id="help-toggle-hotkey">Ctrl+Shift+H</kbd><span>显示 / 隐藏窗口</span></div>
-              <div class="help-row"><kbd id="help-boss-hotkey">Ctrl+Shift+X</kbd><span>老板键</span></div>
+              <div class="help-row"><kbd id="help-toggle-hotkey">Ctrl+Shift+H</kbd><span>隐藏/显示应用</span></div>
               <div class="help-row"><kbd id="help-immersive-hotkey">Ctrl+Shift+F</kbd><span>沉浸模式</span></div>
               <div class="help-row"><kbd>Ctrl+O</kbd><span>沉浸模式打开文件</span></div>
             </div>

@@ -1,8 +1,14 @@
 // Entry point — imports modules and wires up top-level events
 import { state, dom, initDom } from './modules/state.js';
-import { initContent, switchMode, showContent, closeFile, navigateLine, navigateImmersiveLines, saveCurrentProgressNow, closeTocDropdown, isLineLimitedMode, isImmersiveFileMode } from './modules/content.js';
-import { initSettings, applySettings, syncControlsToSettings, renderCustomPresets, ensureDefaultPresets, restoreActivePreset, handleHotkeyRecording, cancelRecordingIfOutside, debounceSave, markPresetDirty, updateProStatus, updateProFeatureUI, updateSiteRulesUI, toggleAlwaysOnTop, applyExternalAlwaysOnTop, applyExternalHideTaskbarIcon, toggleImmersiveMode, setImmersiveMode, applyShortcutRegistrationStatus } from './modules/settings.js';
+import { initContent, switchMode, showContent, closeFile, navigateLine, navigateImmersiveLines, saveCurrentProgressNow, closeTocDropdown, isLineLimitedMode, isImmersiveFileMode, renderRecentFiles } from './modules/content.js';
+import { initSettings, applySettings, syncControlsToSettings, renderCustomPresets, ensureDefaultPresets, restoreActivePreset, handleHotkeyRecording, cancelRecordingIfOutside, debounceSave, markPresetDirty, updateProStatus, updateProFeatureUI, updateSiteRulesUI, toggleAlwaysOnTop, applyExternalAlwaysOnTop, toggleImmersiveMode, setImmersiveMode, applyShortcutRegistrationStatus } from './modules/settings.js';
 import { initHoverController, setHoverDragging } from './modules/hover.js';
+
+function refreshRecentFilesIfEmptyFile() {
+  if (state.currentMode === 'file' && !state.currentFile) {
+    renderRecentFiles();
+  }
+}
 
 // ============ Initialize ============
 initDom();
@@ -43,6 +49,8 @@ window.api.onSettingsLoaded((data) => {
   applySettings();
   syncControlsToSettings();
   renderCustomPresets();
+  refreshRecentFilesIfEmptyFile();
+  requestAnimationFrame(refreshRecentFilesIfEmptyFile);
   updateProStatus();
   updateProFeatureUI();
   updateSiteRulesUI();
@@ -53,9 +61,6 @@ window.api.onToggleImmersiveMode(() => toggleImmersiveMode());
 window.api.onShortcutRegistrationResult((status) => applyShortcutRegistrationStatus(status));
 window.api.onAlwaysOnTopChanged((enabled) => {
   applyExternalAlwaysOnTop(enabled);
-});
-window.api.onHideTaskbarIconChanged?.((enabled) => {
-  applyExternalHideTaskbarIcon(enabled);
 });
 
 window.api.onFileLoaded((data) => {

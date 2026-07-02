@@ -316,6 +316,7 @@ export function initContent() {
   });
 
   dom.readerContent.addEventListener('wheel', handleImmersiveWheel, { passive: false });
+  dom.singleLineOverlay.addEventListener('wheel', handleLineLimitedWheel, { passive: false });
   document.addEventListener('mousemove', handleImmersivePointerMove, true);
   document.addEventListener('mouseleave', handleImmersivePointerLeave, true);
   window.addEventListener('blur', handleImmersivePointerLeave);
@@ -383,6 +384,7 @@ export function switchMode(mode) {
       hideTocDropdown();
       dom.readerContent.style.display = '';
       dom.titleFilename.textContent = 'Hider - 拖入文件或点击文件夹图标打开';
+      renderRecentFiles();
     }
   }
 }
@@ -813,12 +815,15 @@ function navigateToUrl(input) {
 const IMMERSIVE_DEFAULT_LINES = 1;
 const IMMERSIVE_WHEEL_ANIMATION_MS = 190;
 const IMMERSIVE_WHEEL_GESTURE_IDLE_MS = 180;
-const IMMERSIVE_MIN_PADDING_Y = 6;
+const LINE_LIMITED_WHEEL_THRESHOLD_PX = 80;
+const LINE_LIMITED_WHEEL_IDLE_MS = 160;
 
 let immersiveWheelFrame = null;
 let immersiveScrollAnimationFrame = null;
 let immersiveWheelGestureTimer = null;
 let immersiveWheelGestureLocked = false;
+let lineLimitedWheelDelta = 0;
+let lineLimitedWheelTimer = null;
 let immersiveLayoutFrame = null;
 let immersiveMouseRegion = {
   enabled: false,
@@ -827,7 +832,7 @@ let immersiveMouseRegion = {
 let lastImmersivePointer = null;
 let immersiveLineMetrics = {
   lineStep: 1,
-  paddingY: IMMERSIVE_MIN_PADDING_Y,
+  paddingY: 0,
 };
 
 function cancelImmersiveScrollAnimation() {
@@ -916,19 +921,17 @@ function measureImmersiveLineStep() {
 }
 
 function measureImmersiveLineMetrics() {
-  const fontSize = state.settings.immersiveFontSize || state.settings.fontSize || 16;
   const lineStep = measureImmersiveLineStep();
-  const paddingY = Math.max(IMMERSIVE_MIN_PADDING_Y, Math.ceil(fontSize * 0.35));
-  return { lineStep, paddingY };
+  return { lineStep, paddingY: 0 };
 }
 
 function applyImmersiveLineMetrics(metrics) {
   immersiveLineMetrics = metrics;
   const lines = getImmersiveVisibleLines();
-  const height = metrics.lineStep * lines + metrics.paddingY * 2;
+  const height = metrics.lineStep * lines;
   const root = document.documentElement;
   root.style.setProperty('--immersive-line-height-px', `${metrics.lineStep}px`);
-  root.style.setProperty('--immersive-padding-y', `${metrics.paddingY}px`);
+  root.style.setProperty('--immersive-padding-y', '0px');
   root.style.setProperty('--immersive-height', `${height}px`);
 }
 
@@ -936,8 +939,9 @@ function getSnappedImmersiveTop(rawTop) {
   const lineHeight = getImmersiveLineHeightPx();
   const el = dom.readerContent;
   const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
+  const maxSnappedTop = Math.floor(maxScrollTop / lineHeight) * lineHeight;
   const snapped = Math.round(rawTop / lineHeight) * lineHeight;
-  return Math.max(0, Math.min(snapped, maxScrollTop));
+  return Math.max(0, Math.min(snapped, maxSnappedTop));
 }
 
 function snapImmersiveScrollToLine({ save = true } = {}) {
@@ -1024,6 +1028,40 @@ function normalizeWheelDeltaY(e) {
   if (e.deltaMode === WheelEvent.DOM_DELTA_LINE) return e.deltaY * getImmersiveLineHeightPx();
   if (e.deltaMode === WheelEvent.DOM_DELTA_PAGE) return e.deltaY * dom.readerContent.clientHeight;
   return e.deltaY;
+}
+
+function normalizeLineLimitedWheelDeltaY(e) {
+  if (e.deltaMode === WheelEvent.DOM_DELTA_LINE) return e.deltaY * LINE_LIMITED_WHEEL_THRESHOLD_PX;
+  if (e.deltaMode === WheelEvent.DOM_DELTA_PAGE) return e.deltaY * dom.singleLineOverlay.clientHeight;
+  return e.deltaY;
+}
+
+function resetLineLimitedWheelGesture() {
+  lineLimitedWheelDelta = 0;
+  if (lineLimitedWheelTimer !== null) {
+    window.clearTimeout(lineLimitedWheelTimer);
+    lineLimitedWheelTimer = null;
+  }
+}
+
+function handleLineLimitedWheel(e) {
+  if (!isLineLimitedMode() || !state.currentFile) return;
+  e.preventDefault();
+
+  const deltaY = normalizeLineLimitedWheelDeltaY(e);
+  if (!deltaY) return;
+
+  lineLimitedWheelDelta += deltaY;
+  if (lineLimitedWheelTimer !== null) {
+    window.clearTimeout(lineLimitedWheelTimer);
+  }
+  lineLimitedWheelTimer = window.setTimeout(resetLineLimitedWheelGesture, LINE_LIMITED_WHEEL_IDLE_MS);
+
+  if (Math.abs(lineLimitedWheelDelta) < LINE_LIMITED_WHEEL_THRESHOLD_PX) return;
+
+  const direction = Math.sign(lineLimitedWheelDelta);
+  resetLineLimitedWheelGesture();
+  navigateLine(direction);
 }
 
 function handleImmersiveWheel(e) {
@@ -1129,6 +1167,7 @@ export function scheduleImmersiveLayoutRefresh({ snap = false } = {}) {
 
 export function closeFile() {
   resetImmersiveWheelGesture();
+  resetLineLimitedWheelGesture();
   saveCurrentProgressNow();
   state.currentFile = null;
   state.lines = [];
@@ -1165,6 +1204,45 @@ function afterReaderLayout(callback) {
   requestAnimationFrame(() => {
     requestAnimationFrame(callback);
   });
+}
+
+export function captureReaderScrollAnchor() {
+  if (!state.currentFile) return null;
+
+  const el = dom.readerContent;
+  const scrollHeight = Math.max(0, el.scrollHeight - el.clientHeight);
+  const scrollTop = Math.max(0, el.scrollTop);
+
+  return {
+    scrollTop,
+    percent: scrollHeight > 0 ? scrollTop / scrollHeight : 0,
+  };
+}
+
+export function restoreReaderScrollAnchor(anchor, { save = true } = {}) {
+  if (!anchor) return false;
+
+  afterReaderLayout(() => {
+    const el = dom.readerContent;
+    const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
+    const percent = Number(anchor.percent);
+    const fallbackTop = Number(anchor.scrollTop) || 0;
+    const targetTop = Number.isFinite(percent)
+      ? Math.max(0, Math.min(percent, 1)) * maxScrollTop
+      : fallbackTop;
+
+    el.scrollTop = Math.max(0, Math.min(targetTop, maxScrollTop));
+    if (isImmersiveFileMode()) {
+      el.scrollTop = getSnappedImmersiveTop(el.scrollTop);
+    }
+    state.pendingScrollLineIndex = null;
+    updateProgress();
+    if (save) {
+      saveCurrentProgressNow();
+    }
+  });
+
+  return true;
 }
 
 function clampReadingLineIndex(lineIndex) {
@@ -1404,6 +1482,7 @@ export function closeTocDropdown() {
 
 // ============ Content Display ============
 export function showContent(data) {
+  resetLineLimitedWheelGesture();
   dom.placeholder.style.display = 'none';
   dom.textContent.classList.add('active');
 
@@ -1777,10 +1856,12 @@ async function removeReaderMode() {
 }
 
 // ============ Recent Files ============
-function renderRecentFiles() {
-  window.api.loadRecentFiles().then((list) => {
+export function renderRecentFiles() {
+  if (!dom.recentFiles) return Promise.resolve([]);
+
+  return window.api.loadRecentFiles().then((list) => {
     dom.recentFiles.innerHTML = '';
-    if (!list || list.length === 0) return;
+    if (!list || list.length === 0) return [];
 
     const header = document.createElement('div');
     header.className = 'recent-header';
@@ -1825,6 +1906,12 @@ function renderRecentFiles() {
 
       dom.recentFiles.appendChild(item);
     });
+
+    return list;
+  }).catch((error) => {
+    console.warn('Failed to render recent files:', error);
+    dom.recentFiles.innerHTML = '';
+    return [];
   });
 }
 

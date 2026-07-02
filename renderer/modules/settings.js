@@ -1,6 +1,6 @@
 // Settings panel, presets, hotkeys, applySettings
 import { state, dom, hexToRgb, isColorDark, formatHotkey } from './state.js';
-import { updateVisibleLines, updateProgress, convertReadingPosition, applyReaderMode, toggleReaderMode, getSiteRule, getCurrentHostname, isBuiltinSite, isLineLimitedMode, isImmersiveFileMode, switchMode, getCurrentReadingLineIndex, scrollReaderToLineIndex, setLineLimitedPosition, scheduleImmersiveLayoutRefresh, syncImmersiveMouseRegionFromEvent } from './content.js';
+import { updateVisibleLines, updateProgress, convertReadingPosition, applyReaderMode, toggleReaderMode, getSiteRule, getCurrentHostname, isBuiltinSite, isLineLimitedMode, isImmersiveFileMode, switchMode, getCurrentReadingLineIndex, scrollReaderToLineIndex, setLineLimitedPosition, scheduleImmersiveLayoutRefresh, syncImmersiveMouseRegionFromEvent, captureReaderScrollAnchor, restoreReaderScrollAnchor } from './content.js';
 import { syncHoverMode } from './hover.js';
 
 let controls = {};
@@ -390,12 +390,6 @@ function syncAlwaysOnTopUi() {
   }
 }
 
-function syncHideTaskbarIconUi() {
-  if (controls.hideTaskbarIcon) {
-    controls.hideTaskbarIcon.checked = !!state.settings.hideTaskbarIcon;
-  }
-}
-
 function syncImmersiveUi() {
   const immersiveFontSize = state.settings.immersiveFontSize || state.settings.fontSize || 16;
   const immersiveFontColor = state.settings.immersiveFontColor || state.settings.fontColor || '#333333';
@@ -445,7 +439,10 @@ function syncImmersiveUi() {
 
 export function setImmersiveMode(enabled, { persist = true } = {}) {
   const nextEnabled = !!enabled;
-  const preserveLineIndex = state.currentMode === 'file' && state.currentFile
+  const preserveAnchor = state.currentMode === 'file' && state.currentFile
+    ? captureReaderScrollAnchor()
+    : null;
+  const preserveLineIndex = !preserveAnchor && state.currentMode === 'file' && state.currentFile
     ? getCurrentReadingLineIndex()
     : null;
 
@@ -462,7 +459,9 @@ export function setImmersiveMode(enabled, { persist = true } = {}) {
   syncImmersiveUi();
   applySettings();
 
-  if (preserveLineIndex != null) {
+  if (preserveAnchor) {
+    restoreReaderScrollAnchor(preserveAnchor);
+  } else if (preserveLineIndex != null) {
     if (state.settings.immersiveMode || !isLineLimitedMode()) {
       scrollReaderToLineIndex(preserveLineIndex);
     } else {
@@ -511,34 +510,6 @@ export function applyExternalAlwaysOnTop(enabled) {
   syncAlwaysOnTopUi();
 }
 
-export async function setHideTaskbarIcon(enabled, { persist = true } = {}) {
-  if (window.api.platform !== 'win32') return false;
-
-  const previousValue = !!state.settings.hideTaskbarIcon;
-  const nextValue = !!enabled;
-
-  state.settings.hideTaskbarIcon = nextValue;
-  syncHideTaskbarIconUi();
-
-  if (!persist) return nextValue;
-
-  try {
-    const confirmed = await window.api.setHideTaskbarIcon(nextValue);
-    state.settings.hideTaskbarIcon = !!confirmed;
-  } catch (error) {
-    console.error('Failed to update hide-taskbar-icon:', error);
-    state.settings.hideTaskbarIcon = previousValue;
-  }
-
-  syncHideTaskbarIconUi();
-  return state.settings.hideTaskbarIcon;
-}
-
-export function applyExternalHideTaskbarIcon(enabled) {
-  state.settings.hideTaskbarIcon = !!enabled;
-  syncHideTaskbarIconUi();
-}
-
 export function initSettings() {
   controls = {
     fontSize: document.getElementById('set-font-size'),
@@ -559,14 +530,9 @@ export function initSettings() {
     immersiveFontOpacity: document.getElementById('set-immersive-font-opacity'),
     immersiveLineHeight: document.getElementById('set-immersive-line-height'),
     alwaysOnTop: document.getElementById('set-always-on-top'),
-    hideTaskbarIcon: document.getElementById('set-hide-taskbar-icon'),
+    hideAppIcon: document.getElementById('set-hide-app-icon'),
     updateAutoCheck: document.getElementById('set-update-auto-check'),
   };
-
-  const hideTaskbarRow = document.getElementById('setting-hide-taskbar-row');
-  if (hideTaskbarRow && window.api.platform !== 'win32') {
-    hideTaskbarRow.hidden = true;
-  }
 
   valueDisplays = {
     fontSize: document.getElementById('val-font-size'),
@@ -725,9 +691,10 @@ export function initSettings() {
     setAlwaysOnTop(e.target.checked);
   });
 
-  if (controls.hideTaskbarIcon) {
-    controls.hideTaskbarIcon.addEventListener('change', (e) => {
-      setHideTaskbarIcon(e.target.checked);
+  if (controls.hideAppIcon) {
+    controls.hideAppIcon.addEventListener('change', (e) => {
+      state.settings.hideAppIcon = e.target.checked;
+      window.api.saveSettings(state.settings);
     });
   }
 
@@ -748,7 +715,6 @@ export function initSettings() {
 
   document.getElementById('btn-restore-hotkeys').addEventListener('click', () => {
     state.settings.toggleHotkey = 'CommandOrControl+Shift+H';
-    state.settings.bossHotkey = 'CommandOrControl+Shift+X';
     state.settings.settingsHotkey = 'CommandOrControl+Shift+S';
     state.settings.immersiveHotkey = 'CommandOrControl+Shift+F';
     syncControlsToSettings();
@@ -816,9 +782,8 @@ export function applySettings() {
   root.style.setProperty('--immersive-font-opacity', immersiveFontOpacity);
   root.style.setProperty('--immersive-line-height', immersiveLineHeight);
   root.style.setProperty('--immersive-line-height-px', `${computedLineHeight}px`);
-  const immersivePaddingY = Math.max(6, Math.ceil(immersiveFontSize * 0.35));
-  const immersiveHeight = Math.ceil(computedLineHeight * immersiveLines + immersivePaddingY * 2);
-  root.style.setProperty('--immersive-padding-y', `${immersivePaddingY}px`);
+  const immersiveHeight = Math.ceil(computedLineHeight * immersiveLines);
+  root.style.setProperty('--immersive-padding-y', '0px');
   root.style.setProperty('--immersive-height', `${immersiveHeight}px`);
 
   const bgRgb = hexToRgb(state.settings.bgColor);
@@ -931,7 +896,7 @@ export function applySettings() {
     if (isImmersiveFileMode()) {
       dom.singleLineOverlay.classList.add('hidden');
       dom.readerContent.style.display = '';
-    } else if (isLineLimitedMode()) {
+    } else if (state.currentFile && isLineLimitedMode()) {
       dom.singleLineOverlay.classList.remove('hidden');
       dom.readerContent.style.display = 'none';
     } else {
@@ -967,6 +932,9 @@ export function syncControlsToSettings() {
   if (controls.updateAutoCheck) {
     controls.updateAutoCheck.checked = state.settings.updateAutoCheck !== false;
   }
+  if (controls.hideAppIcon) {
+    controls.hideAppIcon.checked = !!state.settings.hideAppIcon;
+  }
   state.settings.immersiveFontSize = state.settings.immersiveFontSize || state.settings.fontSize || 16;
   state.settings.immersiveFontColor = state.settings.immersiveFontColor || state.settings.fontColor || '#333333';
   state.settings.immersiveFontOpacity = state.settings.immersiveFontOpacity ?? state.settings.fontOpacity ?? 1;
@@ -975,21 +943,16 @@ export function syncControlsToSettings() {
   renderRecentTextColors();
   syncImmersiveUi();
   syncAlwaysOnTopUi();
-  syncHideTaskbarIconUi();
 
   const toggleBtn = document.getElementById('set-toggle-hotkey');
-  const bossBtn = document.getElementById('set-boss-hotkey');
   const settingsBtn = document.getElementById('set-settings-hotkey');
   const immersiveBtn = document.getElementById('set-immersive-hotkey');
   const helpToggleHotkey = document.getElementById('help-toggle-hotkey');
-  const helpBossHotkey = document.getElementById('help-boss-hotkey');
   const helpImmersiveHotkey = document.getElementById('help-immersive-hotkey');
   if (toggleBtn) toggleBtn.textContent = formatHotkey(state.settings.toggleHotkey);
-  if (bossBtn) bossBtn.textContent = formatHotkey(state.settings.bossHotkey);
   if (settingsBtn) settingsBtn.textContent = formatHotkey(state.settings.settingsHotkey);
   if (immersiveBtn) immersiveBtn.textContent = formatHotkey(state.settings.immersiveHotkey);
   if (helpToggleHotkey) helpToggleHotkey.textContent = formatHotkey(state.settings.toggleHotkey);
-  if (helpBossHotkey) helpBossHotkey.textContent = formatHotkey(state.settings.bossHotkey);
   if (helpImmersiveHotkey) helpImmersiveHotkey.textContent = formatHotkey(state.settings.immersiveHotkey);
   applyShortcutRegistrationStatus(shortcutRegistrationStatus);
   scheduleAutoUpdateCheck();

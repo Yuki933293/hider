@@ -42,7 +42,6 @@ let settings = {
   lineHeight: 1.8,
   hoverMode: false,
   alwaysOnTop: false,
-  hideTaskbarIcon: false,
   visibleLines: 0,
   autoHideOnLeave: false,
   hideBg: false,
@@ -55,9 +54,9 @@ let settings = {
   immersiveFontOpacity: 1.0,
   immersiveLineHeight: 1.8,
   toggleHotkey: 'CommandOrControl+Shift+H',
-  bossHotkey: 'CommandOrControl+Shift+X',
   settingsHotkey: 'CommandOrControl+Shift+S',
   immersiveHotkey: 'CommandOrControl+Shift+F',
+  hideAppIcon: false,
   updateAutoCheck: true,
   proLicenseKey: '',
   siteRules: {},
@@ -1065,6 +1064,31 @@ function emitAlwaysOnTopChanged() {
   mainWindow.webContents.send('always-on-top-changed', settings.alwaysOnTop);
 }
 
+function applyAppIconVisibility({ forceHidden = false } = {}) {
+  const hidden = forceHidden || !!settings.hideAppIcon;
+
+  if (process.platform === 'darwin' && app.dock) {
+    if (hidden) {
+      app.dock.hide();
+    } else {
+      app.dock.show();
+    }
+  }
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setSkipTaskbar(hidden);
+  }
+
+  if (hidden) {
+    if (tray && !tray.isDestroyed()) {
+      tray.destroy();
+    }
+    tray = null;
+  } else if (!tray || tray.isDestroyed()) {
+    createTray();
+  }
+}
+
 function getHoverWindowSnapshot() {
   return {
     hoverMode: hoverWindowState.hoverMode,
@@ -1120,29 +1144,6 @@ function startHoverTracking() {
   }, 150);
 }
 
-function applySkipTaskbarSetting() {
-  if (!mainWindow || process.platform !== 'win32') return;
-  mainWindow.setSkipTaskbar(!!settings.hideTaskbarIcon);
-}
-
-function emitHideTaskbarIconChanged() {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  mainWindow.webContents.send('hide-taskbar-icon-changed', settings.hideTaskbarIcon);
-}
-
-function setHideTaskbarIconSetting(enabled) {
-  if (process.platform !== 'win32') return false;
-
-  const nextValue = !!enabled;
-  if (settings.hideTaskbarIcon === nextValue) return settings.hideTaskbarIcon;
-
-  settings.hideTaskbarIcon = nextValue;
-  applySkipTaskbarSetting();
-  saveSettings();
-  emitHideTaskbarIconChanged();
-  return settings.hideTaskbarIcon;
-}
-
 function setAlwaysOnTopSetting(enabled) {
   const nextValue = !!enabled;
   if (settings.alwaysOnTop === nextValue) return settings.alwaysOnTop;
@@ -1174,7 +1175,7 @@ function createWindow() {
     transparent: true,
     frame: false,
     alwaysOnTop: settings.alwaysOnTop,
-    skipTaskbar: process.platform === 'win32' && !!settings.hideTaskbarIcon,
+    skipTaskbar: !!settings.hideAppIcon,
     hasShadow: false,
     resizable: true,
     minimizable: true,
@@ -1191,7 +1192,7 @@ function createWindow() {
     hoverMode: hoverWindowState.hoverMode,
     interactive: hoverWindowState.interactive,
   });
-  applySkipTaskbarSetting();
+  applyAppIconVisibility();
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
   // Intercept new windows from webview: navigate in-place instead of opening new window
@@ -1214,7 +1215,7 @@ function refreshTrayMenu() {
   if (!tray || tray.isDestroyed()) return;
 
   const contextMenu = Menu.buildFromTemplate([
-    { label: '显示/隐藏', click: () => toggleVisibility() },
+    { label: '隐藏/显示应用', click: () => toggleVisibility() },
     { label: '打开文件', click: () => openFile() },
     { type: 'separator' },
     {
@@ -1233,6 +1234,8 @@ function refreshTrayMenu() {
 }
 
 function createTray() {
+  if (tray && !tray.isDestroyed()) return;
+  if (settings.hideAppIcon) return;
   const iconPath = path.join(__dirname, 'img/icon.png');
   const icon = nativeImage.createFromPath(iconPath);
 
@@ -1244,13 +1247,10 @@ function createTray() {
 
 function restoreWindow() {
   if (!mainWindow) return;
-  if (process.platform === 'darwin' && app.dock) {
-    app.dock.show();
-  }
-  applySkipTaskbarSetting();
+  applyAppIconVisibility();
   mainWindow.show();
   isVisible = true;
-  if (!tray || tray.isDestroyed()) {
+  if (!settings.hideAppIcon && (!tray || tray.isDestroyed())) {
     createTray();
   }
 }
@@ -1262,22 +1262,6 @@ function toggleVisibility() {
     isVisible = false;
   } else {
     restoreWindow();
-  }
-}
-
-function bossKey() {
-  if (!mainWindow) return;
-  mainWindow.hide();
-  isVisible = false;
-  // Hide from Dock (macOS) / Taskbar (Windows)
-  if (process.platform === 'darwin' && app.dock) {
-    app.dock.hide();
-  }
-  mainWindow.setSkipTaskbar(true);
-  // Hide tray / menu bar icon
-  if (tray) {
-    tray.destroy();
-    tray = null;
   }
 }
 
@@ -1329,15 +1313,9 @@ function getShortcutDefinitions() {
   return [
     {
       settingKey: 'toggleHotkey',
-      label: '显隐切换',
+      label: '隐藏/显示应用',
       accelerator: settings.toggleHotkey,
       handler: () => toggleVisibility(),
-    },
-    {
-      settingKey: 'bossHotkey',
-      label: '老板键',
-      accelerator: settings.bossHotkey,
-      handler: () => bossKey(),
     },
     {
       settingKey: 'settingsHotkey',
@@ -1532,7 +1510,7 @@ ipcMain.handle('open-update-installer', async (event, filePath) => {
 
 ipcMain.handle('save-settings', (event, newSettings) => {
   const previousAlwaysOnTop = settings.alwaysOnTop;
-  const previousHideTaskbarIcon = settings.hideTaskbarIcon;
+  const previousHideAppIcon = settings.hideAppIcon;
   settings = normalizeSettingsForPersistence({ ...settings, ...newSettings });
   saveSettings();
   applyWindowZOrder({
@@ -1544,9 +1522,8 @@ ipcMain.handle('save-settings', (event, newSettings) => {
     refreshTrayMenu();
     emitAlwaysOnTopChanged();
   }
-  if (previousHideTaskbarIcon !== settings.hideTaskbarIcon) {
-    applySkipTaskbarSetting();
-    emitHideTaskbarIconChanged();
+  if (previousHideAppIcon !== settings.hideAppIcon) {
+    applyAppIconVisibility();
   }
   const shortcuts = registerShortcuts();
   return { ...settings, shortcutStatus: shortcuts };
@@ -1578,11 +1555,6 @@ ipcMain.handle('get-window-bounds', () => {
 ipcMain.handle('set-always-on-top', (event, enabled) => {
   return setAlwaysOnTopSetting(enabled);
 });
-
-ipcMain.handle('set-hide-taskbar-icon', (event, enabled) => {
-  return setHideTaskbarIconSetting(enabled);
-});
-
 
 ipcMain.handle('search-resources', async (event, query) => {
   try {
